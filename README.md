@@ -65,7 +65,7 @@ You can sync time on your devices using the `matter_time_sync.sync_time` service
 
 ### Example: Automation (YAML)
 
-Sync time every day at 3:00 AM:
+Sync time every day at 3:15 AM and when plugged:
 
 ```yaml
 alias: "[TIME] Sync IKEA ALPSTUGA"
