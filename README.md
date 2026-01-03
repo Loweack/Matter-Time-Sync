@@ -69,10 +69,14 @@ Sync time every day at 3:15 AM and when plugged:
 
 ```yaml
 alias: "[TIME] Sync IKEA ALPSTUGA"
-description: "Synchronizes the time on the IKEA ALPSTUGA device daily at 03:15 AM and whenever the device becomes available after being unavailable."
+description: >-
+  Synchronizes the time on the IKEA ALPSTUGA on Sundays at 03:15 AM and whenever
+  the device becomes available after being unavailable.
 triggers:
   - at: "03:15:00"
     trigger: time
+    weekday:
+      - sun
   - entity_id:
       - switch.alpstuga_air_quality_monitor
     from:
