@@ -94,16 +94,66 @@ class MatterTimeSyncAsync:
             await self.send_command(ws, node_id, endpoint, CLUSTER_ID_TIME_SYNC, CMD_ID_SET_TIME_ZONE, "SetTimeZone", {"timeZone": [tz_obj]})
 
             # 3. DST Offset
-            dst_obj = {
-                "offset": tz_info["dst_adjustment_seconds"],
-                "validStarting": self.to_matter_microseconds(tz_info["dst_start"]),
-                "validUntil": self.to_matter_microseconds(tz_info["dst_end"]),
-            }
-            await self.send_command(ws, node_id, endpoint, CLUSTER_ID_TIME_SYNC, CMD_ID_SET_DST_OFFSET, "SetDSTOffset", {"DSTOffset": [dst_obj]})
+            #
+            # Some timezones (e.g. Australia/Sydney) are in DST at the start of the year,
+            # so dst_end occurs before dst_start within the same calendar year.
+            # The original single-range payload would then have validStarting > validUntil,
+            # which triggers InteractionModelError: ConstraintError (0x87) on devices like ALPSTUGA.
+            dst_list: list[dict] = []
+            dst_adj = int(tz_info.get("dst_adjustment_seconds") or 0)
+            dst_start = tz_info.get("dst_start")
+            dst_end = tz_info.get("dst_end")
+            jan1_is_dst = bool(tz_info.get("jan1_is_dst"))
+
+            if dst_adj > 0 and dst_start and dst_end:
+                dst_start_us = self.to_matter_microseconds(dst_start)
+                dst_end_us = self.to_matter_microseconds(dst_end)
+
+                if jan1_is_dst:
+                    # DST is active at year start, so the first transition is DST end.
+                    # Build two ranges: [0, dst_end) offset=dst_adj; [dst_end, dst_start) offset=0
+                    if dst_end_us > 0 and dst_start_us > dst_end_us:
+                        dst_list = [
+                            {"offset": dst_adj, "validStarting": 0, "validUntil": dst_end_us},
+                            {"offset": 0, "validStarting": dst_end_us, "validUntil": dst_start_us},
+                        ]
+                else:
+                    # Not in DST at year start. Build two ranges: [0, dst_start) offset=0; [dst_start, dst_end) offset=dst_adj
+                    if dst_start_us > 0 and dst_end_us > dst_start_us:
+                        dst_list = [
+                            {"offset": 0, "validStarting": 0, "validUntil": dst_start_us},
+                            {"offset": dst_adj, "validStarting": dst_start_us, "validUntil": dst_end_us},
+                        ]
+
+            if dst_list:
+                try:
+                    await self.send_command(
+                        ws,
+                        node_id,
+                        endpoint,
+                        CLUSTER_ID_TIME_SYNC,
+                        CMD_ID_SET_DST_OFFSET,
+                        "SetDSTOffset",
+                        {"DSTOffset": dst_list},
+                    )
+                except Exception as e:
+                    # Don't fail the entire sync if a device rejects DST rules; keep UTC + timezone working.
+                    _LOGGER.warning("DST sync failed for node %s (continuing without DST): %s", node_id, e)
+            else:
+                _LOGGER.debug("Skipping DSTOffset sync for %s (dst_adj=%s, dst_start=%s, dst_end=%s, jan1_is_dst=%s)", self.tz_name, dst_adj, dst_start, dst_end, jan1_is_dst)
 
             # 4. UTC Time
             now_utc = datetime.now(timezone.utc)
-            await self.send_command(ws, node_id, endpoint, CLUSTER_ID_TIME_SYNC, CMD_ID_SET_UTC_TIME, "SetUTCTime", {"UTCTime": self.to_matter_microseconds(now_utc), "granularity": 4})
+            # GranularityEnum differs by device; ALPSTUGA reports granularity=2.
+            await self.send_command(
+                ws,
+                node_id,
+                endpoint,
+                CLUSTER_ID_TIME_SYNC,
+                CMD_ID_SET_UTC_TIME,
+                "SetUTCTime",
+                {"UTCTime": self.to_matter_microseconds(now_utc), "granularity": 2},
+            )
 
     async def send_command(self, ws, node_id, endpoint, cluster_id, command_id, command_name, payload):
         message = {
@@ -148,7 +198,16 @@ class MatterTimeSyncAsync:
         max_offset = max(monthly_offsets)
         dst_adjustment_seconds = int(max_offset.total_seconds()) - standard_seconds
         dst_start, dst_end = MatterTimeSyncAsync._find_dst_transitions(year, tz, timezone.utc)
-        return {"offset_seconds": standard_seconds, "dst_adjustment_seconds": dst_adjustment_seconds, "dst_start": dst_start, "dst_end": dst_end}
+        jan1_utc = datetime(year, 1, 1, tzinfo=timezone.utc)
+        jan1_off = jan1_utc.astimezone(tz).utcoffset() or timedelta(0)
+        jan1_is_dst = int(jan1_off.total_seconds()) > standard_seconds
+        return {
+            "offset_seconds": standard_seconds,
+            "dst_adjustment_seconds": dst_adjustment_seconds,
+            "dst_start": dst_start,
+            "dst_end": dst_end,
+            "jan1_is_dst": jan1_is_dst,
+        }
 
     @staticmethod
     def _find_dst_transitions(year, tz, utc):
