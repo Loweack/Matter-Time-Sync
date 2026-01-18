@@ -94,3 +94,47 @@ actions:
       node_id: 7
       endpoint: 0
 mode: restart
+```
+
+---
+
+### Service: `matter_time_sync.set_custom_time`
+
+Set a custom date and time on a Matter device. This is useful for creating stopwatch-like functionality, testing time-based features, or temporarily displaying a different time.
+
+**Parameters:**
+*   `node_id` (Required): The Matter Node ID of the device (integer).
+*   `endpoint` (Optional): The endpoint ID (default: `0`).
+*   `date` (Required): The date to set (format: `YYYY-MM-DD`).
+*   `time` (Required): The time to set (format: `HH:MM:SS`).
+
+### Example: Cooking Timer (YAML)
+
+Resets the device time to zero when you start cooking, so it displays how long the food has been in the oven. When turned off, it syncs back to the current time:
+
+```yaml
+alias: "[TIME] Cooking Timer"
+description: >-
+  Resets the IKEA ALPSTUGA time to epoch when the oven is turned on,
+  displaying elapsed cooking time. Reverts to current time when turned off.
+triggers:
+  - entity_id: switch.oven_power
+    trigger: state
+actions:
+  - if:
+      - condition: state
+        entity_id: switch.oven_power
+        state: "on"
+    then:
+      - action: matter_time_sync.set_custom_time
+        data:
+          node_id: 7
+          endpoint: 0
+          date: "2000-01-01"
+          time: "00:00:00"
+    else:
+      - action: matter_time_sync.sync_time
+        data:
+          node_id: 7
+          endpoint: 0
+mode: single

@@ -23,3 +23,43 @@ sync_time:
           min: 0
           max: 255
           mode: box
+
+set_custom_time:
+  name: Set custom time
+  description: Set a custom date and time on a Matter device.
+  fields:
+    node_id:
+      name: Node ID
+      description: Matter device node ID
+      required: true
+      example: 7
+      selector:
+        number:
+          min: 1
+          max: 65535
+          mode: box
+    endpoint:
+      name: Endpoint
+      description: Matter device endpoint ID
+      required: false
+      default: 0
+      example: 0
+      selector:
+        number:
+          min: 0
+          max: 255
+          mode: box
+    date:
+      name: Date
+      description: The date to set on the device (YYYY-MM-DD)
+      required: true
+      example: "2000-01-01"
+      selector:
+        date:
+    time:
+      name: Time
+      description: The time to set on the device (HH:MM:SS)
+      required: true
+      example: "00:00:00"
+      selector:
+        time:

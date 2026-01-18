@@ -16,6 +16,7 @@ _LOGGER = logging.getLogger(__name__)
 
 DOMAIN = "matter_time_sync"
 SERVICE_SYNC_TIME = "sync_time"
+SERVICE_SET_CUSTOM_TIME = "set_custom_time"
 
 # Matter Constants
 CLUSTER_ID_TIME_SYNC = 0x0038
@@ -29,6 +30,13 @@ MICROSECONDS_PER_SECOND = 1_000_000
 SYNC_TIME_SCHEMA = vol.Schema({
     vol.Required("node_id"): cv.positive_int,
     vol.Optional("endpoint", default=0): cv.positive_int,
+})
+
+SET_CUSTOM_TIME_SCHEMA = vol.Schema({
+    vol.Required("node_id"): cv.positive_int,
+    vol.Optional("endpoint", default=0): cv.positive_int,
+    vol.Required("date"): cv.date,
+    vol.Required("time"): cv.time,
 })
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
@@ -61,14 +69,44 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.error("FAILED: Time sync error: %s", e)
             raise
 
+    async def handle_set_custom_time(call: ServiceCall) -> None:
+        """Handle the set_custom_time service call."""
+        node_id = call.data["node_id"]
+        endpoint = call.data["endpoint"]
+        date_input = call.data["date"]
+        time_input = call.data["time"]
+        
+        # Read from config
+        ws_address = entry.data.get("websocket_address")
+        tz_name = entry.data.get("timezone")
+
+        _LOGGER.info("Setting custom time for node %s (ep %s): %s %s", node_id, endpoint, date_input, time_input)
+        
+        # Combine date and time into a datetime object
+        custom_datetime = datetime.combine(date_input, time_input)
+        
+        session = async_get_clientsession(hass)
+        syncer = MatterTimeSyncAsync(session, ws_address, tz_name)
+        
+        try:
+            await syncer.run_sync_custom_time(node_id, endpoint, custom_datetime)
+            _LOGGER.info("SUCCESS: Custom time set for node %s", node_id)
+        except Exception as e:
+            _LOGGER.error("FAILED: Custom time sync error: %s", e)
+            raise
+
     hass.services.async_register(
         DOMAIN, SERVICE_SYNC_TIME, handle_sync_time, schema=SYNC_TIME_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_SET_CUSTOM_TIME, handle_set_custom_time, schema=SET_CUSTOM_TIME_SCHEMA
     )
     return True
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     hass.services.async_remove(DOMAIN, SERVICE_SYNC_TIME)
+    hass.services.async_remove(DOMAIN, SERVICE_SET_CUSTOM_TIME)
     if entry.entry_id in hass.data[DOMAIN]:
         hass.data[DOMAIN].pop(entry.entry_id)
     return True
@@ -104,6 +142,33 @@ class MatterTimeSyncAsync:
             # 4. UTC Time
             now_utc = datetime.now(timezone.utc)
             await self.send_command(ws, node_id, endpoint, CLUSTER_ID_TIME_SYNC, CMD_ID_SET_UTC_TIME, "SetUTCTime", {"UTCTime": self.to_matter_microseconds(now_utc), "granularity": 4})
+
+    async def run_sync_custom_time(self, node_id, endpoint, custom_datetime):
+        """Sync a custom datetime to the Matter device."""
+        async with self.session.ws_connect(self.ws_address) as ws:
+            # 1. Welcome
+            welcome = await ws.receive_json()
+            _LOGGER.debug("Server Welcome: %s", welcome)
+
+            tz_info = await self.get_timezone_info(self.tz_name)
+            tz = ZoneInfo(self.tz_name)
+
+            # 2. Time Zone
+            tz_obj = {"offset": tz_info["offset_seconds"], "validAt": 0, "name": self.tz_name}
+            await self.send_command(ws, node_id, endpoint, CLUSTER_ID_TIME_SYNC, CMD_ID_SET_TIME_ZONE, "SetTimeZone", {"timeZone": [tz_obj]})
+
+            # 3. DST Offset
+            dst_obj = {
+                "offset": tz_info["dst_adjustment_seconds"],
+                "validStarting": self.to_matter_microseconds(tz_info["dst_start"]),
+                "validUntil": self.to_matter_microseconds(tz_info["dst_end"]),
+            }
+            await self.send_command(ws, node_id, endpoint, CLUSTER_ID_TIME_SYNC, CMD_ID_SET_DST_OFFSET, "SetDSTOffset", {"DSTOffset": [dst_obj]})
+
+            # 4. Custom UTC Time - localize the custom datetime and convert to UTC
+            custom_local = custom_datetime.replace(tzinfo=tz)
+            custom_utc = custom_local.astimezone(timezone.utc)
+            await self.send_command(ws, node_id, endpoint, CLUSTER_ID_TIME_SYNC, CMD_ID_SET_UTC_TIME, "SetUTCTime", {"UTCTime": self.to_matter_microseconds(custom_utc), "granularity": 4})
 
     async def send_command(self, ws, node_id, endpoint, cluster_id, command_id, command_name, payload):
         message = {
