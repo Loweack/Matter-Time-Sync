@@ -1,0 +1,83 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Matter Time Sync einrichten",
+        "description": "{detection_status}\n\nKonfiguriere die Verbindung zum Matter Server und optionale Einstellungen.",
+        "data": {
+          "ws_url": "Matter Server WebSocket URL",
+          "timezone": "Zeitzone",
+          "device_filter": "Gerätefilter (kommagetrennt, leer = alle)",
+          "auto_sync_enabled": "Automatische Synchronisation aktivieren",
+          "auto_sync_interval": "Synchronisations-Intervall",
+          "only_time_sync_devices": "Nur Geräte mit Time Sync Unterstützung"
+        },
+        "data_description": {
+          "ws_url": "WebSocket URL des Matter Servers (wird automatisch erkannt falls Matter-Integration vorhanden)",
+          "timezone": "Zeitzone für die Synchronisation",
+          "device_filter": "Nur Buttons für Geräte erstellen, deren Name einen dieser Begriffe enthält (z.B. 'alpstuga, sonoff')",
+          "auto_sync_enabled": "Automatisch alle gefilterten Geräte synchronisieren",
+          "auto_sync_interval": "Wie oft die automatische Synchronisation ausgeführt wird",
+          "only_time_sync_devices": "Wenn aktiviert, werden nur Buttons für Geräte erstellt, die den Time Sync Cluster unterstützen. Deaktivieren um alle Geräte zu synchronisieren."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Verbindung zum Matter Server fehlgeschlagen. Bitte URL prüfen."
+    },
+    "abort": {
+      "already_configured": "Matter Time Sync ist bereits konfiguriert."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Matter Time Sync Optionen",
+        "description": "Passe die Einstellungen an.",
+        "data": {
+          "ws_url": "Matter Server WebSocket URL",
+          "timezone": "Zeitzone",
+          "device_filter": "Gerätefilter (kommagetrennt, leer = alle)",
+          "auto_sync_enabled": "Automatische Synchronisation aktivieren",
+          "auto_sync_interval": "Synchronisations-Intervall",
+          "only_time_sync_devices": "Nur Geräte mit Time Sync Unterstützung"
+        },
+        "data_description": {
+          "ws_url": "WebSocket URL des Matter Servers",
+          "timezone": "Zeitzone für die Synchronisation",
+          "device_filter": "Nur Buttons für Geräte mit diesen Namen erstellen (z.B. 'alpstuga, sonoff')",
+          "auto_sync_enabled": "Automatisch alle gefilterten Geräte synchronisieren",
+          "auto_sync_interval": "Wie oft die automatische Synchronisation ausgeführt wird",
+          "only_time_sync_devices": "Wenn aktiviert, werden nur Buttons für Geräte erstellt, die den Time Sync Cluster unterstützen. Deaktivieren um alle Geräte zu synchronisieren."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Verbindung zum Matter Server fehlgeschlagen."
+    }
+  },
+  "services": {
+    "sync_time": {
+      "name": "Zeit synchronisieren",
+      "description": "Synchronisiert die Zeit auf einem einzelnen Matter-Gerät.",
+      "fields": {
+        "node_id": {
+          "name": "Node ID",
+          "description": "Die Matter Node ID des Geräts"
+        },
+        "endpoint": {
+          "name": "Endpoint",
+          "description": "Der Matter Endpoint (normalerweise 0)"
+        }
+      }
+    },
+    "sync_all": {
+      "name": "Alle synchronisieren",
+      "description": "Synchronisiert die Zeit auf allen gefilterten Matter-Geräten."
+    },
+    "refresh_devices": {
+      "name": "Geräte aktualisieren",
+      "description": "Sucht nach neuen Matter-Geräten und erstellt automatisch Buttons für sie."
+    }
+  }
+}
