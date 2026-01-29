@@ -99,11 +99,11 @@ class MatterTimeSyncAsync:
                 "validStarting": self.to_matter_microseconds(tz_info["dst_start"]),
                 "validUntil": self.to_matter_microseconds(tz_info["dst_end"]),
             }
-            await self.send_command(ws, node_id, endpoint, CLUSTER_ID_TIME_SYNC, CMD_ID_SET_DST_OFFSET, "SetDSTOffset", {"DSTOffset": [dst_obj]})
+            await self.send_command(ws, node_id, endpoint, CLUSTER_ID_TIME_SYNC, CMD_ID_SET_DST_OFFSET, "SetDSTOffset", {"dstOffset": [dst_obj]})
 
             # 4. UTC Time
             now_utc = datetime.now(timezone.utc)
-            await self.send_command(ws, node_id, endpoint, CLUSTER_ID_TIME_SYNC, CMD_ID_SET_UTC_TIME, "SetUTCTime", {"UTCTime": self.to_matter_microseconds(now_utc), "granularity": 4})
+            await self.send_command(ws, node_id, endpoint, CLUSTER_ID_TIME_SYNC, CMD_ID_SET_UTC_TIME, "SetUTCTime", {"utcTime": self.to_matter_microseconds(now_utc), "granularity": 4})
 
     async def send_command(self, ws, node_id, endpoint, cluster_id, command_id, command_name, payload):
         message = {
