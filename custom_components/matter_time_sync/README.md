@@ -1,6 +1,3 @@
-# STOP !!! Don't Use my Repo. Please use the Original Repo  >>>>> https://github.com/Loweack/Matter-Time-Sync/  <<<<<  
-
-
 # Matter Time Sync
 
 A Home Assistant custom integration to synchronize time on Matter devices that support the Time Synchronization cluster.
@@ -24,7 +21,7 @@ Many Matter devices have an internal clock that needs to be synchronized for acc
 - Home Assistant 2024.1.0 or newer
 - Matter Server (usually installed via the Matter integration)
 - Matter devices that support the Time Synchronization cluster (0x0038)
- 
+
 ## Installation
 
 ### Manual Installation
@@ -183,7 +180,7 @@ logger:
 
 ## Version History
 
-### v2.0.0
+### v3.0.0
 - Added automatic device discovery during auto-sync
 - Added Time Sync cluster detection
 - Added device filter option
@@ -192,6 +189,8 @@ logger:
 - Fixed attribute parsing for Matter Server
 - Added refresh_devices service
 - Added complete German and English translations
+
+### v2.0.0
 - Added button entities for each device
 - Added auto-discovery of Matter devices
 - Added timezone selection dropdown
