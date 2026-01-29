@@ -1,10 +1,10 @@
 sync_time:
-  name: Zeit synchronisieren
-  description: Synchronisiert die Zeit auf einem einzelnen Matter-Gerät.
+  name: Sync Time
+  description: Synchronizes the time on a single Matter device.
   fields:
     node_id:
       name: Node ID
-      description: Die Matter Node ID des Geräts
+      description: The Matter Node ID of the device
       required: true
       example: 1
       selector:
@@ -14,7 +14,7 @@ sync_time:
           mode: box
     endpoint:
       name: Endpoint
-      description: Der Matter Endpoint (normalerweise 0)
+      description: The Matter Endpoint (usually 0)
       default: 0
       required: false
       selector:
@@ -24,13 +24,13 @@ sync_time:
           mode: box
 
 sync_all:
-  name: Alle synchronisieren
+  name: Sync All
   description: >
-    Synchronisiert die Zeit auf allen Matter-Geräten, die dem konfigurierten 
-    Gerätefilter entsprechen. Ohne Filter werden alle Geräte synchronisiert.
+    Synchronizes the time on all Matter devices that match the configured device filter. 
+    If no filter is set, all devices are synchronized.
 
 refresh_devices:
-  name: Geräte aktualisieren
+  name: Refresh Devices
   description: >
-    Sucht nach neuen Matter-Geräten und erstellt automatisch Buttons für sie.
-    Wird auch automatisch bei jedem Auto-Sync ausgeführt.
+    Searches for new Matter devices and automatically creates buttons for them.
+    Also runs automatically with every auto-sync.
