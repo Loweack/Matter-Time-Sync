@@ -267,13 +267,14 @@ class MatterTimeSyncCoordinator:
         now = datetime.now(tz)
         utc_now = datetime.now(ZoneInfo("UTC"))
 
-        # UTC offset in seconds (e.g., 3600 for UTC+1)
-        utc_offset = int(now.utcoffset().total_seconds())
+        # Total UTC offset in seconds (includes DST when applicable)
+        total_offset = int(now.utcoffset().total_seconds()) if now.utcoffset() else 0
 
-        # Check for DST offset
-        dst_offset = 0
-        if now.dst() is not None:
-            dst_offset = int(now.dst().total_seconds())
+        # DST offset in seconds (0 when not in DST)
+        dst_offset = int(now.dst().total_seconds()) if now.dst() else 0
+
+        # Base timezone offset (excluding DST) to avoid double-counting DST
+        utc_offset = total_offset - dst_offset
 
         # UTC time in microseconds since epoch
         utc_microseconds = int(utc_now.timestamp() * 1_000_000)
