@@ -298,7 +298,7 @@ class MatterTimeSyncCoordinator:
                 "command_name": "SetUTCTime",
                 "payload": {
                     "utcTime": utc_microseconds,
-                    "granularity": 3,  # Milliseconds granularity
+                    "granularity": 3,
                 },
             },
         )
