@@ -41,6 +41,9 @@ class MatterTimeSyncCoordinator:
         self._lock = asyncio.Lock()
         self._command_lock = asyncio.Lock()  # Prevent concurrent WS reads
 
+        # Per-node lock: prevents multiple sync runs for the same node_id from interleaving
+        self._per_node_sync_locks: dict[int, asyncio.Lock] = {}
+
     @property
     def is_connected(self) -> bool:
         """Return True if connected to Matter Server."""
@@ -275,66 +278,54 @@ class MatterTimeSyncCoordinator:
 
     async def async_sync_time(self, node_id: int, endpoint: int = 0) -> bool:
         """Sync time on a Matter device."""
-        try:
-            tz = ZoneInfo(self._timezone)
-        except Exception:
-            _LOGGER.warning("Invalid timezone %s, using UTC", self._timezone)
-            tz = ZoneInfo("UTC")
+        lock = self._per_node_sync_locks.setdefault(node_id, asyncio.Lock())
+        async with lock:
+            try:
+                tz = ZoneInfo(self._timezone)
+            except Exception:
+                _LOGGER.warning("Invalid timezone %s, using UTC", self._timezone)
+                tz = ZoneInfo("UTC")
 
-        now = datetime.now(tz)
-        utc_now = now.astimezone(ZoneInfo("UTC"))
+            now = datetime.now(tz)
+            utc_now = now.astimezone(ZoneInfo("UTC"))
 
-        # Total UTC offset in seconds (includes DST when applicable)
-        total_offset = int(now.utcoffset().total_seconds()) if now.utcoffset() else 0
+            # Total UTC offset in seconds (includes DST when applicable)
+            total_offset = int(now.utcoffset().total_seconds()) if now.utcoffset() else 0
 
-        # FORCE DST TO 0
-        # We merge the DST offset into the main timezone offset.
-        # This prevents "double counting" on devices that support DST,
-        # and prevents "lag" on devices that ignore the DST command.
-        utc_offset = total_offset
-        dst_offset = 0
+            # FORCE DST TO 0
+            # We merge the DST offset into the main timezone offset.
+            # This prevents "double counting" on devices that support DST,
+            # and prevents "lag" on devices that ignore the DST command.
+            utc_offset = total_offset
+            dst_offset = 0
 
-        # UTC time in microseconds since epoch
-        utc_microseconds = int(utc_now.timestamp() * 1_000_000)
+            # UTC time in microseconds since epoch
+            utc_microseconds = int(utc_now.timestamp() * 1_000_000)
 
-        _LOGGER.info(
-            "Syncing time for node %s: local=%s, UTC=%s, offset=%ds, DST=%ds (forced to 0)",
-            node_id,
-            now.isoformat(),
-            utc_now.isoformat(),
-            utc_offset,
-            dst_offset,
-        )
+            _LOGGER.info(
+                "Syncing time for node %s: local=%s, UTC=%s, offset=%ds, DST=%ds (forced to 0)",
+                node_id,
+                now.isoformat(),
+                utc_now.isoformat(),
+                utc_offset,
+                dst_offset,
+            )
 
-        # ---------------------------------------------------------
-        # 1. Set UTC Time (Try PascalCase first, then camelCase)
-        # ---------------------------------------------------------
+            # ---------------------------------------------------------
+            # 1. Set UTC Time (Try PascalCase first, then camelCase)
+            # ---------------------------------------------------------
 
-        # Payload variants
-        payload_utc_pascal = {
-            "UTCTime": utc_microseconds,
-            "granularity": 3,
-        }
-        payload_utc_camel = {
-            "utcTime": utc_microseconds,
-            "granularity": 3,
-        }
+            # Payload variants
+            payload_utc_pascal = {
+                "UTCTime": utc_microseconds,
+                "granularity": 3,
+            }
+            payload_utc_camel = {
+                "utcTime": utc_microseconds,
+                "granularity": 3,
+            }
 
-        # Attempt 1: Try PascalCase (Old Standard)
-        time_response = await self._async_send_command(
-            "device_command",
-            {
-                "node_id": node_id,
-                "endpoint_id": endpoint,
-                "cluster_id": TIME_SYNC_CLUSTER_ID,
-                "command_name": "SetUTCTime",
-                "payload": payload_utc_pascal,
-            },
-        )
-
-        # Attempt 2: If failed, try camelCase (New Standard)
-        if not time_response:
-            _LOGGER.debug("SetUTCTime (PascalCase) failed, trying camelCase...")
+            # Attempt 1: Try PascalCase (Old Standard)
             time_response = await self._async_send_command(
                 "device_command",
                 {
@@ -342,59 +333,49 @@ class MatterTimeSyncCoordinator:
                     "endpoint_id": endpoint,
                     "cluster_id": TIME_SYNC_CLUSTER_ID,
                     "command_name": "SetUTCTime",
-                    "payload": payload_utc_camel,
+                    "payload": payload_utc_pascal,
                 },
             )
 
-        if not time_response:
-            _LOGGER.error("Failed to set UTC time for node %s (tried both formats)", node_id)
-            return False
+            # Attempt 2: If failed, try camelCase (New Standard)
+            if not time_response:
+                _LOGGER.debug("SetUTCTime (PascalCase) failed, trying camelCase...")
+                time_response = await self._async_send_command(
+                    "device_command",
+                    {
+                        "node_id": node_id,
+                        "endpoint_id": endpoint,
+                        "cluster_id": TIME_SYNC_CLUSTER_ID,
+                        "command_name": "SetUTCTime",
+                        "payload": payload_utc_camel,
+                    },
+                )
 
-        _LOGGER.debug("SetUTCTime successful for node %s", node_id)
+            if not time_response:
+                _LOGGER.error(
+                    "Failed to set UTC time for node %s (tried both formats)", node_id
+                )
+                return False
 
-        # DELAY 1: Allow device to process UTC time update
-        await asyncio.sleep(1.0)
+            _LOGGER.debug("SetUTCTime successful for node %s", node_id)
 
-        # ---------------------------------------------------------
-        # 2. Set Timezone
-        # ---------------------------------------------------------
+            # DELAY 1: Allow device to process UTC time update
+            await asyncio.sleep(1.0)
 
-        # 'timeZone' is commonly camelCase.
-        # We send the FULL offset (standard + DST) here.
-        tz_payload_list = [
-            {
-                "offset": utc_offset,
-                "validAt": 0,
-                "name": self._timezone,
-            }
-        ]
+            # ---------------------------------------------------------
+            # 2. Set Timezone
+            # ---------------------------------------------------------
 
-        tz_response = await self._async_send_command(
-            "device_command",
-            {
-                "node_id": node_id,
-                "endpoint_id": endpoint,
-                "cluster_id": TIME_SYNC_CLUSTER_ID,
-                "command_name": "SetTimeZone",
-                "payload": {"timeZone": tz_payload_list},
-            },
-        )
-
-        if tz_response:
-            _LOGGER.debug(
-                "SetTimeZone successful for node %s (offset=%d)", node_id, utc_offset
-            )
-        else:
-            _LOGGER.warning(
-                "SetTimeZone failed for node %s, trying without name", node_id
-            )
-            # Try without name (some devices don't support it)
-            tz_payload_list_no_name = [
+            # 'timeZone' is commonly camelCase.
+            # We send the FULL offset (standard + DST) here.
+            tz_payload_list = [
                 {
                     "offset": utc_offset,
                     "validAt": 0,
+                    "name": self._timezone,
                 }
             ]
+
             tz_response = await self._async_send_command(
                 "device_command",
                 {
@@ -402,54 +383,66 @@ class MatterTimeSyncCoordinator:
                     "endpoint_id": endpoint,
                     "cluster_id": TIME_SYNC_CLUSTER_ID,
                     "command_name": "SetTimeZone",
-                    "payload": {"timeZone": tz_payload_list_no_name},
+                    "payload": {"timeZone": tz_payload_list},
                 },
             )
+
             if tz_response:
                 _LOGGER.debug(
-                    "SetTimeZone (without name) successful for node %s", node_id
+                    "SetTimeZone successful for node %s (offset=%d)", node_id, utc_offset
                 )
             else:
-                _LOGGER.warning("SetTimeZone completely failed for node %s", node_id)
+                _LOGGER.warning(
+                    "SetTimeZone failed for node %s, trying without name", node_id
+                )
+                # Try without name (some devices don't support it)
+                tz_payload_list_no_name = [
+                    {
+                        "offset": utc_offset,
+                        "validAt": 0,
+                    }
+                ]
+                tz_response = await self._async_send_command(
+                    "device_command",
+                    {
+                        "node_id": node_id,
+                        "endpoint_id": endpoint,
+                        "cluster_id": TIME_SYNC_CLUSTER_ID,
+                        "command_name": "SetTimeZone",
+                        "payload": {"timeZone": tz_payload_list_no_name},
+                    },
+                )
+                if tz_response:
+                    _LOGGER.debug(
+                        "SetTimeZone (without name) successful for node %s", node_id
+                    )
+                else:
+                    _LOGGER.warning("SetTimeZone completely failed for node %s", node_id)
 
-        # DELAY 2: Allow device to process TimeZone update
-        await asyncio.sleep(1.0)
+            # DELAY 2: Allow device to process TimeZone update
+            await asyncio.sleep(1.0)
 
-        # ---------------------------------------------------------
-        # 3. Set DST Offset (Try PascalCase first, then camelCase)
-        # ---------------------------------------------------------
+            # ---------------------------------------------------------
+            # 3. Set DST Offset (Try PascalCase first, then camelCase)
+            # ---------------------------------------------------------
 
-        # Use a far-future timestamp for validUntil instead of 0
-        far_future_us = int(
-            (utc_now.timestamp() + 365 * 24 * 3600) * 1_000_000
-        )  # 1 year from now
+            # Use a far-future timestamp for validUntil instead of 0
+            far_future_us = int(
+                (utc_now.timestamp() + 365 * 24 * 3600) * 1_000_000
+            )  # 1 year from now
 
-        dst_list = [
-            {
-                "offset": dst_offset,  # Always 0
-                "validStarting": 0,
-                "validUntil": far_future_us,
-            }
-        ]
+            dst_list = [
+                {
+                    "offset": dst_offset,  # Always 0
+                    "validStarting": 0,
+                    "validUntil": far_future_us,
+                }
+            ]
 
-        payload_dst_pascal = {"DSTOffset": dst_list}
-        payload_dst_camel = {"dstOffset": dst_list}
+            payload_dst_pascal = {"DSTOffset": dst_list}
+            payload_dst_camel = {"dstOffset": dst_list}
 
-        # Attempt 1: Try PascalCase
-        dst_response = await self._async_send_command(
-            "device_command",
-            {
-                "node_id": node_id,
-                "endpoint_id": endpoint,
-                "cluster_id": TIME_SYNC_CLUSTER_ID,
-                "command_name": "SetDSTOffset",
-                "payload": payload_dst_pascal,
-            },
-        )
-
-        # Attempt 2: If failed, try camelCase
-        if not dst_response:
-            _LOGGER.debug("SetDSTOffset (PascalCase) failed, trying camelCase...")
+            # Attempt 1: Try PascalCase
             dst_response = await self._async_send_command(
                 "device_command",
                 {
@@ -457,28 +450,40 @@ class MatterTimeSyncCoordinator:
                     "endpoint_id": endpoint,
                     "cluster_id": TIME_SYNC_CLUSTER_ID,
                     "command_name": "SetDSTOffset",
-                    "payload": payload_dst_camel,
+                    "payload": payload_dst_pascal,
                 },
             )
 
-        if dst_response:
-            _LOGGER.debug(
-                "SetDSTOffset (0) successful for node %s", node_id
-            )
-        else:
-            _LOGGER.debug(
-                "SetDSTOffset not supported or failed for node %s (this is often OK)",
-                node_id,
-            )
+            # Attempt 2: If failed, try camelCase
+            if not dst_response:
+                _LOGGER.debug("SetDSTOffset (PascalCase) failed, trying camelCase...")
+                dst_response = await self._async_send_command(
+                    "device_command",
+                    {
+                        "node_id": node_id,
+                        "endpoint_id": endpoint,
+                        "cluster_id": TIME_SYNC_CLUSTER_ID,
+                        "command_name": "SetDSTOffset",
+                        "payload": payload_dst_camel,
+                    },
+                )
 
-        _LOGGER.info(
-            "Time synced for node %s: %s (UTC offset: %d, DST: %d)",
-            node_id,
-            now.isoformat(),
-            utc_offset,
-            dst_offset,
-        )
-        return True
+            if dst_response:
+                _LOGGER.debug("SetDSTOffset (0) successful for node %s", node_id)
+            else:
+                _LOGGER.debug(
+                    "SetDSTOffset not supported or failed for node %s (this is often OK)",
+                    node_id,
+                )
+
+            _LOGGER.info(
+                "Time synced for node %s: %s (UTC offset: %d, DST: %d)",
+                node_id,
+                now.isoformat(),
+                utc_offset,
+                dst_offset,
+            )
+            return True
 
     async def async_sync_all_devices(self) -> None:
         """Sync time on all filtered devices."""
