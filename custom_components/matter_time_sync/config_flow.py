@@ -283,15 +283,16 @@ class MatterTimeSyncOptionsFlow(config_entries.OptionsFlow):
                 errors["base"] = "cannot_connect"
             else:
                 # Update the config entry with new data
+                # Use explicit key check for optional fields to allow empty values
                 self.hass.config_entries.async_update_entry(
                     self.config_entry,
                     data={
                         CONF_WS_URL: ws_url,
                         CONF_TIMEZONE: user_input[CONF_TIMEZONE],
-                        CONF_DEVICE_FILTER: user_input.get(CONF_DEVICE_FILTER, DEFAULT_DEVICE_FILTER),
-                        CONF_AUTO_SYNC_ENABLED: user_input.get(CONF_AUTO_SYNC_ENABLED, DEFAULT_AUTO_SYNC_ENABLED),
-                        CONF_AUTO_SYNC_INTERVAL: int(user_input.get(CONF_AUTO_SYNC_INTERVAL, DEFAULT_AUTO_SYNC_INTERVAL)),
-                        CONF_ONLY_TIME_SYNC_DEVICES: user_input.get(CONF_ONLY_TIME_SYNC_DEVICES, DEFAULT_ONLY_TIME_SYNC_DEVICES),
+                        CONF_DEVICE_FILTER: user_input[CONF_DEVICE_FILTER] if CONF_DEVICE_FILTER in user_input else DEFAULT_DEVICE_FILTER,
+                        CONF_AUTO_SYNC_ENABLED: user_input[CONF_AUTO_SYNC_ENABLED] if CONF_AUTO_SYNC_ENABLED in user_input else DEFAULT_AUTO_SYNC_ENABLED,
+                        CONF_AUTO_SYNC_INTERVAL: int(user_input[CONF_AUTO_SYNC_INTERVAL]) if CONF_AUTO_SYNC_INTERVAL in user_input else DEFAULT_AUTO_SYNC_INTERVAL,
+                        CONF_ONLY_TIME_SYNC_DEVICES: user_input[CONF_ONLY_TIME_SYNC_DEVICES] if CONF_ONLY_TIME_SYNC_DEVICES in user_input else DEFAULT_ONLY_TIME_SYNC_DEVICES,
                     },
                 )
                 return self.async_create_entry(title="", data={})
