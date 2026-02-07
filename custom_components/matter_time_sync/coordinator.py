@@ -456,8 +456,19 @@ class MatterTimeSyncCoordinator:
             # ---------------------------------------------------------
             # 3) Set UTC Time LAST (Try PascalCase first, then camelCase)
             # ---------------------------------------------------------
-            payload_utc_pascal = {"UTCTime": utc_microseconds, "granularity": 3}
-            payload_utc_camel = {"utcTime": utc_microseconds, "granularity": 3}
+            # Some stacks/devices require TimeSource to be provided.
+            # Keep the existing mechanic (PascalCase first, then camelCase) while including TimeSource.
+            time_source = 1
+            payload_utc_pascal = {
+                "UTCTime": utc_microseconds,
+                "granularity": 3,
+                "TimeSource": time_source,
+            }
+            payload_utc_camel = {
+                "utcTime": utc_microseconds,
+                "granularity": 3,
+                "timeSource": time_source,
+            }
 
             time_response = await self._async_send_command(
                 "device_command",
