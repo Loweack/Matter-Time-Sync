@@ -79,5 +79,12 @@
       "name": "Refresh Devices",
       "description": "Searches for new Matter devices and automatically creates buttons for them."
     }
+  },
+  "entity": {
+    "button": {
+      "sync_time": {
+        "name": "Time sync"
+      }
+    }
   }
 }
