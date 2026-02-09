@@ -2,53 +2,57 @@
   "config": {
     "step": {
       "user": {
-        "title": "Configurer la synchronisation de l’heure Matter",
-        "description": "{detection_status}\n\nConfigurez la connexion au serveur Matter et les paramètres optionnels.",
+        "title": "Configurer la synchronisation de l'heure Matter",
+        "description": "{detection_status}\n\nConfigurez la connexion au serveur Matter et les parametres optionnels.",
         "data": {
           "ws_url": "URL WebSocket du serveur Matter",
           "timezone": "Fuseau horaire",
-          "device_filter": "Filtre de périphériques (séparés par des virgules, vide = tous)",
+          "device_filter": "Filtre de peripheriques (separes par des virgules, vide = tous)",
           "auto_sync_enabled": "Activer la synchronisation automatique",
           "auto_sync_interval": "Intervalle de synchronisation",
-          "only_time_sync_devices": "Uniquement les appareils prenant en charge la synchronisation de l’heure"
+          "only_time_sync_devices": "Uniquement les appareils prenant en charge la synchronisation de l'heure",
+          "filter_target": "Cible du filtre"
         },
         "data_description": {
-          "ws_url": "URL WebSocket du serveur Matter (détectée automatiquement si l’intégration Matter est présente)",
+          "ws_url": "URL WebSocket du serveur Matter (detectee automatiquement si l'integration Matter est presente)",
           "timezone": "Fuseau horaire pour la synchronisation",
-          "device_filter": "Créer des boutons uniquement pour les appareils dont le nom contient l’un de ces termes (ex. 'alpstuga, sonoff')",
-          "auto_sync_enabled": "Synchroniser automatiquement tous les appareils filtrés à l’intervalle spécifié",
-          "auto_sync_interval": "Fréquence d’exécution de la synchronisation automatique",
-          "only_time_sync_devices": "Si activé, créer des boutons uniquement pour les appareils prenant en charge le cluster Time Sync. Désactivez pour essayer de synchroniser tous les appareils."
+          "device_filter": "Creer des boutons uniquement pour les appareils dont le nom contient l'un de ces termes (ex. 'alpstuga, sonoff')",
+          "auto_sync_enabled": "Synchroniser automatiquement tous les appareils filtres a l'intervalle specifie",
+          "auto_sync_interval": "Frequence d'execution de la synchronisation automatique",
+          "only_time_sync_devices": "Si active, creer des boutons uniquement pour les appareils prenant en charge le cluster Time Sync. Desactivez pour essayer de synchroniser tous les appareils.",
+          "filter_target": "Sur quoi appliquer le filtre (nom HA, produit/label Matter, ou tout)"
         }
       }
     },
     "error": {
-      "cannot_connect": "Impossible de se connecter au serveur Matter. Veuillez vérifier l’URL."
+      "cannot_connect": "Impossible de se connecter au serveur Matter. Veuillez verifier l'URL."
     },
     "abort": {
-      "already_configured": "Matter Time Sync est déjà configuré."
+      "already_configured": "Matter Time Sync est deja configure."
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Options de Matter Time Sync",
-        "description": "Ajustez les paramètres.",
+        "description": "Ajustez les parametres.",
         "data": {
           "ws_url": "URL WebSocket du serveur Matter",
           "timezone": "Fuseau horaire",
-          "device_filter": "Filtre de périphériques (séparés par des virgules, vide = tous)",
+          "device_filter": "Filtre de peripheriques (separes par des virgules, vide = tous)",
           "auto_sync_enabled": "Activer la synchronisation automatique",
           "auto_sync_interval": "Intervalle de synchronisation",
-          "only_time_sync_devices": "Uniquement les appareils prenant en charge la synchronisation de l’heure"
+          "only_time_sync_devices": "Uniquement les appareils prenant en charge la synchronisation de l'heure",
+          "filter_target": "Cible du filtre"
         },
         "data_description": {
           "ws_url": "URL WebSocket du serveur Matter",
           "timezone": "Fuseau horaire pour la synchronisation",
-          "device_filter": "Créer des boutons uniquement pour les appareils ayant ces noms (ex. « alpstuga, sonoff »)",
-          "auto_sync_enabled": "Synchroniser automatiquement tous les appareils filtrés",
-          "auto_sync_interval": "Fréquence d’exécution de la synchronisation automatique",
-          "only_time_sync_devices": "Si activé, créer des boutons uniquement pour les appareils prenant en charge le cluster Time Sync. Désactivez pour essayer de synchroniser tous les appareils."
+          "device_filter": "Creer des boutons uniquement pour les appareils ayant ces noms (ex. 'alpstuga, sonoff')",
+          "auto_sync_enabled": "Synchroniser automatiquement tous les appareils filtres",
+          "auto_sync_interval": "Frequence d'execution de la synchronisation automatique",
+          "only_time_sync_devices": "Si active, creer des boutons uniquement pour les appareils prenant en charge le cluster Time Sync. Desactivez pour essayer de synchroniser tous les appareils.",
+          "filter_target": "Sur quoi appliquer le filtre (nom HA, produit/label Matter, ou tout)"
         }
       }
     },
@@ -58,32 +62,32 @@
   },
   "services": {
     "sync_time": {
-      "name": "Synchroniser l’heure",
-      "description": "Synchronise l’heure sur un seul appareil Matter.",
+      "name": "Synchroniser l'heure",
+      "description": "Synchronise l'heure sur un seul appareil Matter.",
       "fields": {
         "node_id": {
-          "name": "ID du nœud",
-          "description": "L’identifiant de nœud Matter de l’appareil"
+          "name": "ID du noeud",
+          "description": "L'identifiant de noeud Matter de l'appareil"
         },
         "endpoint": {
           "name": "Point de terminaison",
-          "description": "Le point de terminaison Matter (généralement 0)"
+          "description": "Le point de terminaison Matter (generalement 0)"
         }
       }
     },
     "sync_all": {
       "name": "Tout synchroniser",
-      "description": "Synchronise l’heure sur tous les appareils Matter filtrés."
+      "description": "Synchronise l'heure sur tous les appareils Matter filtres."
     },
     "refresh_devices": {
-      "name": "Rafraîchir les appareils",
-      "description": "Recherche de nouveaux appareils Matter et crée automatiquement des boutons pour eux."
+      "name": "Rafraichir les appareils",
+      "description": "Recherche de nouveaux appareils Matter et cree automatiquement des boutons pour eux."
     }
   },
   "entity": {
     "button": {
       "sync_time": {
-        "name": "Synchroniser l’heure"
+        "name": "Synchroniser l'heure"
       }
     }
   }
