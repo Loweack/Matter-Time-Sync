@@ -79,5 +79,12 @@
       "name": "Rafraîchir les appareils",
       "description": "Recherche de nouveaux appareils Matter et crée automatiquement des boutons pour eux."
     }
+  },
+  "entity": {
+    "button": {
+      "sync_time": {
+        "name": "Synchroniser l’heure"
+      }
+    }
   }
 }
