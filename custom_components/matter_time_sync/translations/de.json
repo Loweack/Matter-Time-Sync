@@ -10,7 +10,8 @@
           "device_filter": "Gerätefilter (kommagetrennt, leer = alle)",
           "auto_sync_enabled": "Automatische Synchronisation aktivieren",
           "auto_sync_interval": "Synchronisations-Intervall",
-          "only_time_sync_devices": "Nur Geräte mit Time Sync Unterstützung"
+          "only_time_sync_devices": "Nur Geräte mit Time Sync Unterstützung",
+          "filter_target": "Filter-Ziel"
         },
         "data_description": {
           "ws_url": "WebSocket URL des Matter Servers (wird automatisch erkannt falls Matter-Integration vorhanden)",
@@ -18,7 +19,8 @@
           "device_filter": "Nur Buttons für Geräte erstellen, deren Name einen dieser Begriffe enthält (z.B. 'alpstuga, sonoff')",
           "auto_sync_enabled": "Automatisch alle gefilterten Geräte synchronisieren",
           "auto_sync_interval": "Wie oft die automatische Synchronisation ausgeführt wird",
-          "only_time_sync_devices": "Wenn aktiviert, werden nur Buttons für Geräte erstellt, die den Time Sync Cluster unterstützen. Deaktivieren um alle Geräte zu synchronisieren."
+          "only_time_sync_devices": "Wenn aktiviert, werden nur Buttons für Geräte erstellt, die den Time Sync Cluster unterstützen. Deaktivieren um alle Geräte zu synchronisieren.",
+          "filter_target": "Worauf der Gerätefilter angewendet wird (Name aus HA, Matter-Produktname, Node Label, oder alles)"
         }
       }
     },
@@ -40,7 +42,8 @@
           "device_filter": "Gerätefilter (kommagetrennt, leer = alle)",
           "auto_sync_enabled": "Automatische Synchronisation aktivieren",
           "auto_sync_interval": "Synchronisations-Intervall",
-          "only_time_sync_devices": "Nur Geräte mit Time Sync Unterstützung"
+          "only_time_sync_devices": "Nur Geräte mit Time Sync Unterstützung",
+          "filter_target": "Filter-Ziel"
         },
         "data_description": {
           "ws_url": "WebSocket URL des Matter Servers",
@@ -48,7 +51,8 @@
           "device_filter": "Nur Buttons für Geräte mit diesen Namen erstellen (z.B. 'alpstuga, sonoff')",
           "auto_sync_enabled": "Automatisch alle gefilterten Geräte synchronisieren",
           "auto_sync_interval": "Wie oft die automatische Synchronisation ausgeführt wird",
-          "only_time_sync_devices": "Wenn aktiviert, werden nur Buttons für Geräte erstellt, die den Time Sync Cluster unterstützen. Deaktivieren um alle Geräte zu synchronisieren."
+          "only_time_sync_devices": "Wenn aktiviert, werden nur Buttons für Geräte erstellt, die den Time Sync Cluster unterstützen. Deaktivieren um alle Geräte zu synchronisieren.",
+          "filter_target": "Worauf der Gerätefilter angewendet wird (Name aus HA, Matter-Produktname, Node Label, oder alles)"
         }
       }
     },
@@ -78,6 +82,13 @@
     "refresh_devices": {
       "name": "Geräte aktualisieren",
       "description": "Sucht nach neuen Matter-Geräten und erstellt automatisch Buttons für sie."
+    }
+  },
+  "entity": {
+    "button": {
+      "sync_time": {
+        "name": "Zeit synchronisieren"
+      }
     }
   }
 }

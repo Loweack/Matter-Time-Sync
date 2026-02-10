@@ -10,7 +10,8 @@
           "device_filter": "Device filter (comma-separated, empty = all)",
           "auto_sync_enabled": "Enable automatic synchronization",
           "auto_sync_interval": "Synchronization interval",
-          "only_time_sync_devices": "Only devices with Time Sync support"
+          "only_time_sync_devices": "Only devices with Time Sync support",
+          "filter_target": "Filter target"
         },
         "data_description": {
           "ws_url": "WebSocket URL of the Matter Server (auto-detected if Matter integration is present)",
@@ -18,7 +19,8 @@
           "device_filter": "Only create buttons for devices whose name contains one of these terms (e.g. 'alpstuga, sonoff')",
           "auto_sync_enabled": "Automatically sync all filtered devices at the specified interval",
           "auto_sync_interval": "How often automatic synchronization runs",
-          "only_time_sync_devices": "If enabled, only create buttons for devices that support the Time Sync cluster. Disable to try syncing all devices."
+          "only_time_sync_devices": "If enabled, only create buttons for devices that support the Time Sync cluster. Disable to try syncing all devices.",
+          "filter_target": "What the device filter is matched against (HA name, Matter product/label, or all)"
         }
       }
     },
@@ -40,7 +42,8 @@
           "device_filter": "Device filter (comma-separated, empty = all)",
           "auto_sync_enabled": "Enable automatic synchronization",
           "auto_sync_interval": "Synchronization interval",
-          "only_time_sync_devices": "Only devices with Time Sync support"
+          "only_time_sync_devices": "Only devices with Time Sync support",
+          "filter_target": "Filter target"
         },
         "data_description": {
           "ws_url": "WebSocket URL of the Matter Server",
@@ -48,7 +51,8 @@
           "device_filter": "Only create buttons for devices with these names (e.g. 'alpstuga, sonoff')",
           "auto_sync_enabled": "Automatically sync all filtered devices",
           "auto_sync_interval": "How often automatic synchronization runs",
-          "only_time_sync_devices": "If enabled, only create buttons for devices that support the Time Sync cluster. Disable to try syncing all devices."
+          "only_time_sync_devices": "If enabled, only create buttons for devices that support the Time Sync cluster. Disable to try syncing all devices.",
+          "filter_target": "What the device filter is matched against (HA name, Matter product/label, or all)"
         }
       }
     },
@@ -78,6 +82,13 @@
     "refresh_devices": {
       "name": "Refresh Devices",
       "description": "Searches for new Matter devices and automatically creates buttons for them."
+    }
+  },
+  "entity": {
+    "button": {
+      "sync_time": {
+        "name": "Time sync"
+      }
     }
   }
 }
