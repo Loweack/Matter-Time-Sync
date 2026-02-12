@@ -336,188 +336,203 @@ class MatterTimeSyncCoordinator:
     async def async_sync_time(self, node_id: int, endpoint: int = 0) -> bool:
         """Sync time on a Matter device."""
         lock = self._per_node_sync_locks.setdefault(node_id, asyncio.Lock())
-        async with lock:
-            # Ensure we have node info for endpoint auto-selection
-            if not self._nodes_cache:
-                await self.async_get_matter_nodes()
+        
+        # Try to acquire lock with timeout to prevent indefinite waiting
+        try:
+            async with asyncio.timeout(30):  # 30 second timeout for acquiring lock
+                async with lock:
+                    return await self._do_sync_time(node_id, endpoint)
+        except asyncio.TimeoutError:
+            _LOGGER.error(
+                "Timeout acquiring sync lock for node %s - another sync may be stuck",
+                node_id,
+            )
+            return False
+    
+    async def _do_sync_time(self, node_id: int, endpoint: int = 0) -> bool:
+        """Internal method to perform time sync (called within lock)."""
+        _LOGGER.debug("Starting time sync for node %s (endpoint %s)", node_id, endpoint)
+        # Ensure we have node info for endpoint auto-selection
+        if not self._nodes_cache:
+            await self.async_get_matter_nodes()
 
-            endpoint_id = endpoint
-            if endpoint == 0:
-                node = next(
-                    (n for n in self._nodes_cache if n.get("node_id") == node_id),
-                    None,
+        endpoint_id = endpoint
+        if endpoint == 0:
+            node = next(
+                (n for n in self._nodes_cache if n.get("node_id") == node_id),
+                None,
+            )
+            endpoints = (node or {}).get("time_sync_endpoints") or []
+            if endpoints and 0 not in endpoints:
+                endpoint_id = endpoints[0]
+                _LOGGER.debug(
+                    "Using Time Sync endpoint %s for node %s (cluster 56 not on endpoint 0)",
+                    endpoint_id,
+                    node_id,
                 )
-                endpoints = (node or {}).get("time_sync_endpoints") or []
-                if endpoints and 0 not in endpoints:
-                    endpoint_id = endpoints[0]
+
+            # Log Time Sync cluster attributes for diagnostics
+            if node:
+                _LOGGER.debug(
+                    "Node %s Time Sync endpoints: %s",
+                    node_id,
+                    endpoints,
+                )
+
+            # Get and log Time Sync cluster attributes for diagnostics
+            if endpoint_id is not None:
+                time_sync_attrs = await self.async_get_time_sync_cluster_info(
+                    node_id, endpoint_id
+                )
+                if time_sync_attrs:
                     _LOGGER.debug(
-                        "Using Time Sync endpoint %s for node %s (cluster 56 not on endpoint 0)",
+                        "Node %s endpoint %s Time Sync cluster attributes: %s",
+                        node_id,
                         endpoint_id,
+                        time_sync_attrs,
+                    )
+                else:
+                    _LOGGER.warning(
+                        "Node %s endpoint %s: No Time Sync cluster attributes found!",
                         node_id,
+                        endpoint_id,
                     )
 
-                # Log Time Sync cluster attributes for diagnostics
-                if node:
-                    _LOGGER.debug(
-                        "Node %s Time Sync endpoints: %s",
-                        node_id,
-                        endpoints,
-                    )
+        try:
+            tz = ZoneInfo(self._timezone)
+        except Exception:
+            _LOGGER.warning("Invalid timezone %s, using UTC", self._timezone)
+            tz = ZoneInfo("UTC")
 
-                # Get and log Time Sync cluster attributes for diagnostics
-                if endpoint_id is not None:
-                    time_sync_attrs = await self.async_get_time_sync_cluster_info(
-                        node_id, endpoint_id
-                    )
-                    if time_sync_attrs:
-                        _LOGGER.debug(
-                            "Node %s endpoint %s Time Sync cluster attributes: %s",
-                            node_id,
-                            endpoint_id,
-                            time_sync_attrs,
-                        )
-                    else:
-                        _LOGGER.warning(
-                            "Node %s endpoint %s: No Time Sync cluster attributes found!",
-                            node_id,
-                            endpoint_id,
-                        )
+        now = datetime.now(tz)
+        utc_now = now.astimezone(ZoneInfo("UTC"))
 
-            try:
-                tz = ZoneInfo(self._timezone)
-            except Exception:
-                _LOGGER.warning("Invalid timezone %s, using UTC", self._timezone)
-                tz = ZoneInfo("UTC")
+        # Total UTC offset in seconds (includes DST when applicable)
+        total_offset = int(now.utcoffset().total_seconds()) if now.utcoffset() else 0
 
-            now = datetime.now(tz)
-            utc_now = now.astimezone(ZoneInfo("UTC"))
+        # FORCE DST TO 0 (merge DST into utc_offset)
+        utc_offset = total_offset
+        dst_offset = 0
 
-            # Total UTC offset in seconds (includes DST when applicable)
-            total_offset = int(now.utcoffset().total_seconds()) if now.utcoffset() else 0
+        # Matter Time Sync uses CHIP epoch (2000-01-01) in microseconds
+        utc_microseconds = _to_chip_epoch_us(utc_now)
 
-            # FORCE DST TO 0 (merge DST into utc_offset)
-            utc_offset = total_offset
-            dst_offset = 0
+        _LOGGER.info(
+            "Syncing time for node %s: local=%s, UTC=%s, offset=%ds, DST=%ds (forced to 0)",
+            node_id,
+            now.isoformat(),
+            utc_now.isoformat(),
+            utc_offset,
+            dst_offset,
+        )
 
-            # Matter Time Sync uses CHIP epoch (2000-01-01) in microseconds
-            utc_microseconds = _to_chip_epoch_us(utc_now)
+        # ---------------------------------------------------------
+        # Reordered sequence (to reduce brief wrong local display):
+        #   1) SetTimeZone
+        #   2) SetDSTOffset
+        #   3) SetUTCTime (last)
+        # ---------------------------------------------------------
 
-            _LOGGER.info(
-                "Syncing time for node %s: local=%s, UTC=%s, offset=%ds, DST=%ds (forced to 0)",
-                node_id,
-                now.isoformat(),
-                utc_now.isoformat(),
-                utc_offset,
-                dst_offset,
-            )
+        # ---------------------------------------------------------
+        # ---------------------------------------------------------
+        # 1) Set TimeZone FIRST
+        # ---------------------------------------------------------
+        # Use camelCase format without name (for better device compatibility)
+        tz_list = [{"offset": utc_offset, "validAt": 0}]
 
-            # ---------------------------------------------------------
-            # Reordered sequence (to reduce brief wrong local display):
-            #   1) SetTimeZone
-            #   2) SetDSTOffset
-            #   3) SetUTCTime (last)
-            # ---------------------------------------------------------
+        tz_response = await self._async_send_command(
+            "device_command",
+            {
+                "node_id": node_id,
+                "endpoint_id": endpoint_id,
+                "cluster_id": TIME_SYNC_CLUSTER_ID,
+                "command_name": "SetTimeZone",
+                "payload": {"timeZone": tz_list},
+            },
+        )
 
-            # ---------------------------------------------------------
-            # ---------------------------------------------------------
-            # 1) Set TimeZone FIRST
-            # ---------------------------------------------------------
-            # Use camelCase format without name (for better device compatibility)
-            tz_list = [{"offset": utc_offset, "validAt": 0}]
-
-            tz_response = await self._async_send_command(
-                "device_command",
-                {
-                    "node_id": node_id,
-                    "endpoint_id": endpoint_id,
-                    "cluster_id": TIME_SYNC_CLUSTER_ID,
-                    "command_name": "SetTimeZone",
-                    "payload": {"timeZone": tz_list},
-                },
-            )
-
-            if tz_response:
-                _LOGGER.debug(
-                    "SetTimeZone successful for node %s (offset=%d)",
-                    node_id,
-                    utc_offset,
-                )
-            else:
-                _LOGGER.warning(
-                    "SetTimeZone failed for node %s (continuing anyway)", node_id
-                )
-
-            # 2) Set DST Offset SECOND (Try PascalCase first, then camelCase)
-            # ---------------------------------------------------------
-            far_future_us = _to_chip_epoch_us(utc_now + timedelta(days=365))
-
-            dst_list = [
-                {
-                    "offset": dst_offset,  # Always 0
-                    "validStarting": 0,
-                    "validUntil": far_future_us,
-                }
-            ]
-
-            dst_response = await self._async_send_command(
-                "device_command",
-                {
-                    "node_id": node_id,
-                    "endpoint_id": endpoint_id,
-                    "cluster_id": TIME_SYNC_CLUSTER_ID,
-                    "command_name": "SetDSTOffset",
-                    "payload": {"DSTOffset": dst_list},
-                },
-            )
-
-            if dst_response:
-                _LOGGER.debug("SetDSTOffset successful for node %s", node_id)
-            else:
-                _LOGGER.debug(
-                    "SetDSTOffset not supported or failed for node %s (continuing anyway)",
-                    node_id,
-                )
-
-            # ---------------------------------------------------------
-            # 3) Set UTC Time LAST
-            # ---------------------------------------------------------
-            # Use compatible format: PascalCase UTCTime with granularity 4
-            payload_utc = {
-                "UTCTime": utc_microseconds,
-                "granularity": 4,
-            }
-
+        if tz_response:
             _LOGGER.debug(
-                "Trying SetUTCTime for node %s, endpoint %s: %s",
+                "SetTimeZone successful for node %s (offset=%d)",
                 node_id,
-                endpoint_id,
-                payload_utc,
-            )
-            time_response = await self._async_send_command(
-                "device_command",
-                {
-                    "node_id": node_id,
-                    "endpoint_id": endpoint_id,
-                    "cluster_id": TIME_SYNC_CLUSTER_ID,
-                    "command_name": "SetUTCTime",
-                    "payload": payload_utc,
-                },
-            )
-
-            if not time_response:
-                _LOGGER.error("Failed to set UTC time for node %s", node_id)
-                return False
-
-            _LOGGER.debug("SetUTCTime successful for node %s", node_id)
-
-            _LOGGER.info(
-                "Time synced for node %s: %s (UTC offset: %d, DST: %d)",
-                node_id,
-                now.isoformat(),
                 utc_offset,
-                dst_offset,
             )
-            return True
+        else:
+            _LOGGER.warning(
+                "SetTimeZone failed for node %s (continuing anyway)", node_id
+            )
+
+        # 2) Set DST Offset SECOND (Try PascalCase first, then camelCase)
+        # ---------------------------------------------------------
+        far_future_us = _to_chip_epoch_us(utc_now + timedelta(days=365))
+
+        dst_list = [
+            {
+                "offset": dst_offset,  # Always 0
+                "validStarting": 0,
+                "validUntil": far_future_us,
+            }
+        ]
+
+        dst_response = await self._async_send_command(
+            "device_command",
+            {
+                "node_id": node_id,
+                "endpoint_id": endpoint_id,
+                "cluster_id": TIME_SYNC_CLUSTER_ID,
+                "command_name": "SetDSTOffset",
+                "payload": {"DSTOffset": dst_list},
+            },
+        )
+
+        if dst_response:
+            _LOGGER.debug("SetDSTOffset successful for node %s", node_id)
+        else:
+            _LOGGER.debug(
+                "SetDSTOffset not supported or failed for node %s (continuing anyway)",
+                node_id,
+            )
+
+        # ---------------------------------------------------------
+        # 3) Set UTC Time LAST
+        # ---------------------------------------------------------
+        # Use compatible format: PascalCase UTCTime with granularity 4
+        payload_utc = {
+            "UTCTime": utc_microseconds,
+            "granularity": 4,
+        }
+
+        _LOGGER.debug(
+            "Trying SetUTCTime for node %s, endpoint %s: %s",
+            node_id,
+            endpoint_id,
+            payload_utc,
+        )
+        time_response = await self._async_send_command(
+            "device_command",
+            {
+                "node_id": node_id,
+                "endpoint_id": endpoint_id,
+                "cluster_id": TIME_SYNC_CLUSTER_ID,
+                "command_name": "SetUTCTime",
+                "payload": payload_utc,
+            },
+        )
+
+        if not time_response:
+            _LOGGER.error("Failed to set UTC time for node %s", node_id)
+            return False
+
+        _LOGGER.debug("SetUTCTime successful for node %s", node_id)
+
+        _LOGGER.info(
+            "Time synced for node %s: %s (UTC offset: %d, DST: %d)",
+            node_id,
+            now.isoformat(),
+            utc_offset,
+            dst_offset,
+        )
+        return True
 
     async def async_sync_all_devices(self) -> None:
         """Sync time on all filtered devices."""
