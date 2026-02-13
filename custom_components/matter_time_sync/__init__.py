@@ -1,6 +1,7 @@
 """Matter Time Sync Integration (Native Async)."""
 import logging
 from datetime import timedelta
+from typing import Any
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
@@ -65,9 +66,31 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             """Handle auto-sync timer."""
             _LOGGER.info("Auto-sync triggered (interval: %d minutes)", auto_sync_interval)
             try:
-                await coordinator.async_sync_all_devices()
+                stats = await coordinator.async_sync_all_devices()
+                
+                # Log summary based on results
+                if stats["success"] > 0:
+                    _LOGGER.info(
+                        "Auto-sync completed: %d devices synced successfully",
+                        stats["success"]
+                    )
+                
+                if stats["failed"] > 0:
+                    _LOGGER.warning(
+                        "Auto-sync: %d devices failed. Errors: %s",
+                        stats["failed"],
+                        stats["errors"][:3]  # Show first 3 errors
+                    )
+                
+                if stats["success"] == 0 and stats["failed"] == 0 and stats["skipped"] > 0:
+                    _LOGGER.debug(
+                        "Auto-sync: No devices to sync (%d skipped by filters)",
+                        stats["skipped"]
+                    )
+                    
             except Exception as err:
-                _LOGGER.error("Auto-sync failed: %s", err)
+                # This should rarely happen now (caught in coordinator)
+                _LOGGER.error("Auto-sync handler exception: %s", err, exc_info=True)
         
         # Schedule periodic sync
         interval = timedelta(minutes=auto_sync_interval)
@@ -89,7 +112,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     async def handle_sync_all(call: ServiceCall) -> None:
         """Handle the sync_all service call."""
-        await coordinator.async_sync_all_devices() 
+        _LOGGER.info("Manual sync_all service called")
+        stats = await coordinator.async_sync_all_devices()
+        _LOGGER.info(
+            "Manual sync_all completed: %d synced, %d failed, %d skipped",
+            stats["success"],
+            stats["failed"],
+            stats["skipped"]
+        ) 
 
     async def handle_refresh_devices(call: ServiceCall) -> None:
         """Handle the refresh_devices service call."""

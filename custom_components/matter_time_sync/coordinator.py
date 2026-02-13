@@ -53,6 +53,10 @@ class MatterTimeSyncCoordinator:
 
         # Per-node lock: prevents multiple sync runs for the same node_id from interleaving
         self._per_node_sync_locks: dict[int, asyncio.Lock] = {}
+        
+        # Auto-sync state tracking
+        self._auto_sync_running = False
+        self._auto_sync_lock = asyncio.Lock()
 
     @property
     def is_connected(self) -> bool:
@@ -339,12 +343,12 @@ class MatterTimeSyncCoordinator:
         
         # Try to acquire lock with timeout to prevent indefinite waiting
         try:
-            async with asyncio.timeout(30):  # 30 second timeout for acquiring lock
+            async with asyncio.timeout(20):
                 async with lock:
                     return await self._do_sync_time(node_id, endpoint)
         except asyncio.TimeoutError:
             _LOGGER.error(
-                "Timeout acquiring sync lock for node %s - another sync may be stuck",
+                "Timeout syncing node %s (exceeded 20s)",
                 node_id,
             )
             return False
@@ -379,23 +383,36 @@ class MatterTimeSyncCoordinator:
                     endpoints,
                 )
 
-            # Get and log Time Sync cluster attributes for diagnostics
+            # Get and log Time Sync cluster attributes for diagnostics (optional, with timeout)
             if endpoint_id is not None:
-                time_sync_attrs = await self.async_get_time_sync_cluster_info(
-                    node_id, endpoint_id
-                )
-                if time_sync_attrs:
-                    _LOGGER.debug(
-                        "Node %s endpoint %s Time Sync cluster attributes: %s",
-                        node_id,
-                        endpoint_id,
-                        time_sync_attrs,
+                try:
+                    time_sync_attrs = await asyncio.wait_for(
+                        self.async_get_time_sync_cluster_info(node_id, endpoint_id),
+                        timeout=5
                     )
-                else:
-                    _LOGGER.warning(
-                        "Node %s endpoint %s: No Time Sync cluster attributes found!",
+                    if time_sync_attrs:
+                        _LOGGER.debug(
+                            "Node %s endpoint %s Time Sync cluster attributes: %s",
+                            node_id,
+                            endpoint_id,
+                            time_sync_attrs,
+                        )
+                    else:
+                        _LOGGER.debug(
+                            "Node %s endpoint %s: No Time Sync cluster attributes found",
+                            node_id,
+                            endpoint_id,
+                        )
+                except asyncio.TimeoutError:
+                    _LOGGER.debug(
+                        "Timeout getting Time Sync attributes for node %s (non-critical, continuing)",
                         node_id,
-                        endpoint_id,
+                    )
+                except Exception as err:
+                    _LOGGER.debug(
+                        "Could not get Time Sync attributes for node %s: %s (non-critical, continuing)",
+                        node_id,
+                        err,
                     )
 
         try:
@@ -534,35 +551,119 @@ class MatterTimeSyncCoordinator:
         )
         return True
 
-    async def async_sync_all_devices(self) -> None:
-        """Sync time on all filtered devices."""
-        nodes = await self.async_get_matter_nodes()
+    async def async_sync_all_devices(self) -> dict[str, Any]:
+        """Sync time on all filtered devices.
+        
+        Returns:
+            Dict with sync statistics: {"success": int, "failed": int, "skipped": int, "errors": list}
+        """
+        # Prevent multiple auto-sync processes from running simultaneously
+        if self._auto_sync_running:
+            _LOGGER.warning("Auto-sync already running, skipping this trigger")
+            return {"success": 0, "failed": 0, "skipped": 0, "errors": ["Already running"]}
+        
+        async with self._auto_sync_lock:
+            if self._auto_sync_running:
+                _LOGGER.warning("Auto-sync already running (race condition), skipping")
+                return {"success": 0, "failed": 0, "skipped": 0, "errors": ["Already running"]}
+            
+            self._auto_sync_running = True
+            _LOGGER.debug("Auto-sync started, flag set")
+        
+        try:
+            # Ensure fresh connection for auto-sync to avoid stale WebSocket issues
+            _LOGGER.debug("Refreshing Matter Server connection for auto-sync")
+            await self.async_disconnect()
+            if not await self.async_connect():
+                _LOGGER.error("Failed to connect to Matter Server for auto-sync")
+                return {"success": 0, "failed": 0, "skipped": 0, "errors": ["Failed to connect"]}
+            
+            # Get nodes
+            nodes = await self.async_get_matter_nodes()
+            if not nodes:
+                _LOGGER.warning("No Matter nodes found")
+                return {"success": 0, "failed": 0, "skipped": 0, "errors": ["No nodes found"]}
+            
+            _LOGGER.debug("Auto-sync: %d devices", len(nodes))
+            
+            # Perform sync with timeout
+            stats = {"success": 0, "failed": 0, "skipped": 0, "errors": []}
+            
+            async def _sync_all():
+                device_filters = self.entry.data.get("device_filter", "")
+                device_filters = [
+                    t.strip().lower() for t in device_filters.split(",") if t.strip()
+                ]
+                only_time_sync = self.entry.data.get("only_time_sync_devices", True)
 
-        device_filters = self.entry.data.get("device_filter", "")
-        device_filters = [
-            t.strip().lower() for t in device_filters.split(",") if t.strip()
-        ]
-        only_time_sync = self.entry.data.get("only_time_sync_devices", True)
+                for node in nodes:
+                    node_id = node.get("node_id")
+                    node_name = node.get("name", f"Node {node_id}")
+                    has_time_sync = node.get("has_time_sync", False)
 
-        count = 0
-        for node in nodes:
-            node_id = node.get("node_id")
-            node_name = node.get("name", f"Node {node_id}")
-            has_time_sync = node.get("has_time_sync", False)
+                    # Apply filters
+                    if only_time_sync and not has_time_sync:
+                        stats["skipped"] += 1
+                        _LOGGER.debug("Skipping node %s (%s) - no Time Sync cluster", node_id, node_name)
+                        continue
 
-            if only_time_sync and not has_time_sync:
-                continue
+                    if device_filters and not any(
+                        term in node_name.lower() for term in device_filters
+                    ):
+                        stats["skipped"] += 1
+                        _LOGGER.debug("Skipping node %s (%s) - filtered out", node_id, node_name)
+                        continue
 
-            if device_filters and not any(
-                term in node_name.lower() for term in device_filters
-            ):
-                continue
+                    # Attempt sync with error handling
+                    _LOGGER.info("Auto-syncing node %s (%s)", node_id, node_name)
+                    try:
+                        success = await self.async_sync_time(node_id)
+                        if success:
+                            stats["success"] += 1
+                            _LOGGER.debug("✓ Node %s synced successfully", node_id)
+                        else:
+                            stats["failed"] += 1
+                            error_msg = f"Node {node_id} ({node_name}) sync returned False"
+                            stats["errors"].append(error_msg)
+                            _LOGGER.warning("✗ Node %s sync failed", node_id)
+                    except Exception as err:
+                        stats["failed"] += 1
+                        error_msg = f"Node {node_id} ({node_name}): {err}"
+                        stats["errors"].append(error_msg)
+                        _LOGGER.error(
+                            "✗ Exception syncing node %s (%s): %s",
+                            node_id,
+                            node_name,
+                            err,
+                            exc_info=True
+                        )
 
-            _LOGGER.info("Auto-syncing node %s", node_id)
-            await self.async_sync_time(node_id)
-            count += 1
-
-        _LOGGER.info("Sync all completed. Synced %d devices.", count)
+                _LOGGER.info(
+                    "Auto-sync completed: %d successful, %d failed, %d skipped",
+                    stats["success"],
+                    stats["failed"],
+                    stats["skipped"],
+                )
+                
+                if stats["errors"]:
+                    _LOGGER.warning("Auto-sync errors: %s", stats["errors"])
+            
+            # Fixed timeout of 120s for entire auto-sync process
+            await asyncio.wait_for(_sync_all(), timeout=120)
+            return stats
+            
+        except asyncio.TimeoutError:
+            _LOGGER.error(
+                "Auto-sync exceeded 120s timeout! This may indicate connectivity issues."
+            )
+            return {"success": 0, "failed": 0, "skipped": 0, "errors": ["Timeout after 120s"]}
+        except Exception as err:
+            _LOGGER.error("Auto-sync failed with unexpected error: %s", err, exc_info=True)
+            return {"success": 0, "failed": 0, "skipped": 0, "errors": [str(err)]}
+        finally:
+            async with self._auto_sync_lock:
+                self._auto_sync_running = False
+                _LOGGER.debug("Auto-sync finished, flag cleared")
 
     def update_config(self, ws_url: str, timezone: str) -> None:
         """Update configuration (called when options change)."""
