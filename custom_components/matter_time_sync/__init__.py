@@ -1,6 +1,7 @@
 """Matter Time Sync Integration (Native Async)."""
 import logging
 from datetime import timedelta
+from typing import Any
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
@@ -41,17 +42,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # 1. Initialize Coordinator
     coordinator = MatterTimeSyncCoordinator(hass, entry)
     
-    # 2. Store it in hass.data so button.py can access it
+    # 2. Connect to Matter Server immediately
+    connected = await coordinator.async_connect()
+    if not connected:
+        _LOGGER.error("Failed to connect to Matter Server at startup. Will retry on first command.")
+    
+    # 3. Store it in hass.data so button.py can access it
     hass.data[DOMAIN][entry.entry_id] = {
         "coordinator": coordinator,
         "device_filters": entry.data.get("device_filter", "").split(",") if entry.data.get("device_filter") else [],
         "only_time_sync_devices": entry.data.get("only_time_sync_devices", True),
     }
 
-    # 3. Forward entry setup to platforms (load button.py)
+    # 4. Forward entry setup to platforms (load button.py)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    # 4. Set up auto-sync timer if enabled
+    # 5. Set up auto-sync timer if enabled
     auto_sync_enabled = entry.data.get(CONF_AUTO_SYNC_ENABLED, DEFAULT_AUTO_SYNC_ENABLED)
     auto_sync_interval = entry.data.get(CONF_AUTO_SYNC_INTERVAL, DEFAULT_AUTO_SYNC_INTERVAL)
 
@@ -60,9 +66,31 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             """Handle auto-sync timer."""
             _LOGGER.info("Auto-sync triggered (interval: %d minutes)", auto_sync_interval)
             try:
-                await coordinator.async_sync_all_devices()
+                stats = await coordinator.async_sync_all_devices()
+                
+                # Log summary based on results
+                if stats["success"] > 0:
+                    _LOGGER.info(
+                        "Auto-sync completed: %d devices synced successfully",
+                        stats["success"]
+                    )
+                
+                if stats["failed"] > 0:
+                    _LOGGER.warning(
+                        "Auto-sync: %d devices failed. Errors: %s",
+                        stats["failed"],
+                        stats["errors"][:3]  # Show first 3 errors
+                    )
+                
+                if stats["success"] == 0 and stats["failed"] == 0 and stats["skipped"] > 0:
+                    _LOGGER.debug(
+                        "Auto-sync: No devices to sync (%d skipped by filters)",
+                        stats["skipped"]
+                    )
+                    
             except Exception as err:
-                _LOGGER.error("Auto-sync failed: %s", err)
+                # This should rarely happen now (caught in coordinator)
+                _LOGGER.error("Auto-sync handler exception: %s", err, exc_info=True)
         
         # Schedule periodic sync
         interval = timedelta(minutes=auto_sync_interval)
@@ -75,7 +103,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     else:
         _LOGGER.info("Auto-sync disabled")
 
-    # 5. Define Service Handlers (using the coordinator)
+    # 6. Define Service Handlers (using the coordinator)
     async def handle_sync_time(call: ServiceCall) -> None:
         """Handle the sync_time service call."""
         node_id = call.data["node_id"]
@@ -84,7 +112,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     async def handle_sync_all(call: ServiceCall) -> None:
         """Handle the sync_all service call."""
-        await coordinator.async_sync_all_devices() 
+        _LOGGER.info("Manual sync_all service called")
+        stats = await coordinator.async_sync_all_devices()
+        _LOGGER.info(
+            "Manual sync_all completed: %d synced, %d failed, %d skipped",
+            stats["success"],
+            stats["failed"],
+            stats["skipped"]
+        ) 
 
     async def handle_refresh_devices(call: ServiceCall) -> None:
         """Handle the refresh_devices service call."""
@@ -95,21 +130,38 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         from .button import async_check_new_devices
         await async_check_new_devices(hass, entry.entry_id)
 
-    # 6. Register Services
+    # 7. Register Services
     hass.services.async_register(DOMAIN, SERVICE_SYNC_TIME, handle_sync_time, schema=SYNC_TIME_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_SYNC_ALL, handle_sync_all)
     hass.services.async_register(DOMAIN, SERVICE_REFRESH_DEVICES, handle_refresh_devices)
 
+    # 8. Listen for config options updates
+    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+
     return True
+
+
+async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload config entry when options change."""
+    _LOGGER.info("Reloading Matter Time Sync integration due to config changes")
+    await hass.config_entries.async_reload(entry.entry_id)
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    # Cancel auto-sync timer if running
+    # Get entry data and coordinator
     entry_data = hass.data[DOMAIN].get(entry.entry_id, {})
+    coordinator = entry_data.get("coordinator")
+    
+    # Cancel auto-sync timer if running
     if "auto_sync_cancel" in entry_data:
         cancel = entry_data["auto_sync_cancel"]
         cancel()
         _LOGGER.info("Auto-sync timer cancelled")
+    
+    # Disconnect from Matter Server
+    if coordinator:
+        await coordinator.async_disconnect()
+        _LOGGER.info("Disconnected from Matter Server")
     
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     

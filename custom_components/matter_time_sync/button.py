@@ -292,13 +292,17 @@ class MatterTimeSyncButton(ButtonEntity):
 
     async def async_press(self) -> None:
         """Handle the button press - sync time."""
+        _LOGGER.debug("Button pressed for node %s (%s)", self._node_id, self._node_name)
+        
         now = time.monotonic()
         if (now - self._last_press_ts) < self._PRESS_COOLDOWN_SECONDS:
+            _LOGGER.debug("Ignoring rapid repeat for node %s (cooldown active)", self._node_id)
             return  # silently ignore rapid repeats
 
         async with self._press_lock:
             now = time.monotonic()
             if (now - self._last_press_ts) < self._PRESS_COOLDOWN_SECONDS:
+                _LOGGER.debug("Ignoring rapid repeat for node %s (cooldown active, double-check)", self._node_id)
                 return  # silently ignore rapid repeats
 
             # Start cooldown immediately on first accepted click
