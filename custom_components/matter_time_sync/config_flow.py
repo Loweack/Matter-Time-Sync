@@ -168,14 +168,15 @@ class MatterTimeSyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 await self.async_set_unique_id(DOMAIN)
                 self._abort_if_unique_id_configured()
 
+                # For device_filter, use empty string if not provided
+                device_filter = user_input.get(CONF_DEVICE_FILTER, "")
+
                 return self.async_create_entry(
                     title="Matter Time Sync",
                     data={
                         CONF_WS_URL: ws_url,
                         CONF_TIMEZONE: timezone,
-                        CONF_DEVICE_FILTER: user_input.get(
-                            CONF_DEVICE_FILTER, DEFAULT_DEVICE_FILTER
-                        ),
+                        CONF_DEVICE_FILTER: device_filter,
                         CONF_AUTO_SYNC_ENABLED: user_input.get(
                             CONF_AUTO_SYNC_ENABLED, DEFAULT_AUTO_SYNC_ENABLED
                         ),
@@ -214,7 +215,7 @@ class MatterTimeSyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 ),
                 vol.Optional(
                     CONF_DEVICE_FILTER,
-                    default=DEFAULT_DEVICE_FILTER,
+                    description={"suggested_value": DEFAULT_DEVICE_FILTER},
                 ): TextSelector(
                     TextSelectorConfig(
                         type=TextSelectorType.TEXT,
@@ -288,14 +289,14 @@ class MatterTimeSyncOptionsFlow(config_entries.OptionsFlow):
                 errors["base"] = "cannot_connect"
             else:
                 # Update the config entry with new data
+                # For device_filter, use empty string if not provided (allow clearing the filter)
+                device_filter = user_input.get(CONF_DEVICE_FILTER, "")
                 self.hass.config_entries.async_update_entry(
                     self.config_entry,
                     data={
                         CONF_WS_URL: ws_url,
                         CONF_TIMEZONE: user_input[CONF_TIMEZONE],
-                        CONF_DEVICE_FILTER: user_input.get(
-                            CONF_DEVICE_FILTER, DEFAULT_DEVICE_FILTER
-                        ),
+                        CONF_DEVICE_FILTER: device_filter,
                         CONF_AUTO_SYNC_ENABLED: user_input.get(
                             CONF_AUTO_SYNC_ENABLED, DEFAULT_AUTO_SYNC_ENABLED
                         ),
@@ -316,9 +317,11 @@ class MatterTimeSyncOptionsFlow(config_entries.OptionsFlow):
         current_timezone = self.config_entry.data.get(
             CONF_TIMEZONE, get_ha_timezone(self.hass)
         )
-        current_filter = self.config_entry.data.get(
-            CONF_DEVICE_FILTER, DEFAULT_DEVICE_FILTER
-        )
+        # For device_filter, only use default if key doesn't exist at all (None)
+        # Empty string "" is a valid value (no filter)
+        current_filter = self.config_entry.data.get(CONF_DEVICE_FILTER)
+        if current_filter is None:
+            current_filter = DEFAULT_DEVICE_FILTER
         current_auto_sync = self.config_entry.data.get(
             CONF_AUTO_SYNC_ENABLED, DEFAULT_AUTO_SYNC_ENABLED
         )
@@ -352,7 +355,7 @@ class MatterTimeSyncOptionsFlow(config_entries.OptionsFlow):
                 ),
                 vol.Optional(
                     CONF_DEVICE_FILTER,
-                    default=current_filter,
+                    description={"suggested_value": current_filter},
                 ): TextSelector(
                     TextSelectorConfig(
                         type=TextSelectorType.TEXT,
