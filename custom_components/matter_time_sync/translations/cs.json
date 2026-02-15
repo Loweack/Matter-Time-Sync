@@ -1,0 +1,83 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Nastavení Matter Time Sync",
+        "description": "{detection_status}\n\nNastavte připojení k Matter Serveru a volitelné možnosti.",
+        "data": {
+          "ws_url": "WebSocket URL Matter Serveru",
+          "timezone": "Časové pásmo",
+          "device_filter": "Filtr zařízení (oddělené čárkami, prázdné = všechna)",
+          "auto_sync_enabled": "Povolit automatickou synchronizaci",
+          "auto_sync_interval": "Interval synchronizace",
+          "only_time_sync_devices": "Pouze zařízení s podporou Time Sync"
+        },
+        "data_description": {
+          "ws_url": "WebSocket URL Matter Serveru (automaticky detekováno, pokud je přítomna Matter integrace)",
+          "timezone": "Časové pásmo pro synchronizaci",
+          "device_filter": "Vytvořit tlačítka pouze pro zařízení, jejichž název obsahuje některý z těchto výrazů (např. 'alpstuga, sonoff')",
+          "auto_sync_enabled": "Automaticky synchronizovat všechna filtrovaná zařízení v zadaném intervalu",
+          "auto_sync_interval": "Jak často se spouští automatická synchronizace",
+          "only_time_sync_devices": "Pokud je povoleno, vytvoří tlačítka pouze pro zařízení podporující Time Sync cluster. Zakažte pro pokus o synchronizaci všech zařízení."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Připojení k Matter Serveru selhalo. Zkontrolujte prosím URL."
+    },
+    "abort": {
+      "already_configured": "Matter Time Sync je již nakonfigurováno."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Možnosti Matter Time Sync",
+        "description": "Upravte nastavení.",
+        "data": {
+          "ws_url": "WebSocket URL Matter Serveru",
+          "timezone": "Časové pásmo",
+          "device_filter": "Filtr zařízení (oddělené čárkami, prázdné = všechna)",
+          "auto_sync_enabled": "Povolit automatickou synchronizaci",
+          "auto_sync_interval": "Interval synchronizace",
+          "only_time_sync_devices": "Pouze zařízení s podporou Time Sync"
+        },
+        "data_description": {
+          "ws_url": "WebSocket URL Matter Serveru",
+          "timezone": "Časové pásmo pro synchronizaci",
+          "device_filter": "Vytvořit tlačítka pouze pro zařízení s těmito názvy (např. 'alpstuga, sonoff')",
+          "auto_sync_enabled": "Automaticky synchronizovat všechna filtrovaná zařízení",
+          "auto_sync_interval": "Jak často se spouští automatická synchronizace",
+          "only_time_sync_devices": "Pokud je povoleno, vytvoří tlačítka pouze pro zařízení podporující Time Sync cluster. Zakažte pro pokus o synchronizaci všech zařízení."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Připojení k Matter Serveru selhalo."
+    }
+  },
+  "services": {
+    "sync_time": {
+      "name": "Synchronizovat čas",
+      "description": "Synchronizuje čas na jednom Matter zařízení.",
+      "fields": {
+        "node_id": {
+          "name": "ID uzlu",
+          "description": "Matter Node ID zařízení"
+        },
+        "endpoint": {
+          "name": "Koncový bod",
+          "description": "Matter Endpoint (obvykle 0)"
+        }
+      }
+    },
+    "sync_all": {
+      "name": "Synchronizovat vše",
+      "description": "Synchronizuje čas na všech filtrovaných Matter zařízeních."
+    },
+    "refresh_devices": {
+      "name": "Obnovit zařízení",
+      "description": "Vyhledá nová Matter zařízení a automaticky pro ně vytvoří tlačítka."
+    }
+  }
+}
