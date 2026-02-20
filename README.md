@@ -11,7 +11,7 @@ This component communicates directly with the Matter Server Add-on (or standalon
 > Currently, this custom component has been tested only with a Thread adapter (Matter Over Thread) directly attached to your Home Assistant RPi/Box/VM. Based on user feedback, it is not yet fully compatible with hubs such as the Amazon Echo (4th gen), Google Nest Hub (2nd gen), Google Nest Hub Max, or Apple HomePod mini. Since I don’t have any of these hubs, I’m unable to debug and fix the issues.
 
 ## 🙏🏻 Acknowledgments
-🫰🏻 A big thank you to [@svasek](https://github.com/svasek) for his help with v2.1.1. Of course, let's not forget [@Lexorius](https://github.com/Lexorius) and [@miketth](https://github.com/miketth) for their help with v2.0.0.
+🫰🏻 A big thank you to [@svasek](https://github.com/svasek) for his help with v2.1+. Of course, let's not forget [@Lexorius](https://github.com/Lexorius) and [@miketth](https://github.com/miketth) for their help with v2.0.0.
 
 ## ⚠️ WARNING
 ### Breaking Change: Users upgrading from v1.0.4 must delete and re-add the integration (this does not apply to fresh installs or users already on v2.0.0+).
