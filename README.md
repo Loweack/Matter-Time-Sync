@@ -1,6 +1,6 @@
 # Matter Time Sync for Home Assistant
 
-![Version](https://img.shields.io/badge/version-2.1.1-blue)
+![Version](https://img.shields.io/badge/version-2.1.2-blue)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-Custom%20Component-orange)
 
 A native Home Assistant custom component to synchronize **Time** and **Timezone** on Matter devices that support the Time Synchronization cluster.
@@ -243,7 +243,7 @@ logger:
 
 ## 📋 Version History
 
-### v2.1.1
+### v2.1.2
 ✨ New Features
 - Added automatic timezone detection from Home Assistant
 - Added friendly name support for buttons
