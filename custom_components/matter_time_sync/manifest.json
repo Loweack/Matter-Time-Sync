@@ -1,12 +1,12 @@
 {
   "domain": "matter_time_sync",
   "name": "Matter Time Sync",
-  "codeowners": ["@Loweack", "@Lexorius"],
+  "codeowners": ["@Loweack", "@Lexorius", "@svasek"],
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/Loweack/Matter-Time-Sync",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/Loweack/Matter-Time-Sync/issues",
   "requirements": ["aiohttp"],
-  "version": "2.0.3"
+  "version": "2.1.2"
 }

@@ -1,6 +1,6 @@
 # Matter Time Sync for Home Assistant
 
-![Version](https://img.shields.io/badge/version-2.0.3-blue)
+![Version](https://img.shields.io/badge/version-2.1.2-blue)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-Custom%20Component-orange)
 
 A native Home Assistant custom component to synchronize **Time** and **Timezone** on Matter devices that support the Time Synchronization cluster.
@@ -11,23 +11,25 @@ This component communicates directly with the Matter Server Add-on (or standalon
 > Currently, this custom component has been tested only with a Thread adapter (Matter Over Thread) directly attached to your Home Assistant RPi/Box/VM. Based on user feedback, it is not yet fully compatible with hubs such as the Amazon Echo (4th gen), Google Nest Hub (2nd gen), Google Nest Hub Max, or Apple HomePod mini. Since I don’t have any of these hubs, I’m unable to debug and fix the issues.
 
 ## 🙏🏻 Acknowledgments
-🫰🏻 A big "thank you" to [@Lexorius](https://github.com/Lexorius) and [@miketth](https://github.com/miketth) for their help with this v2.
+🫰🏻 A big thank you to [@svasek](https://github.com/svasek) for his help with v2.1.1. Of course, let's not forget [@Lexorius](https://github.com/Lexorius) and [@miketth](https://github.com/miketth) for their help with v2.0.0.
 
 ## ⚠️ WARNING
-### Breaking Change: Users upgrading from v1.0.4 must delete and re-add the integration (this does not apply to fresh installs or users already on v2.0.0).
+### Breaking Change: Users upgrading from v1.0.4 must delete and re-add the integration (this does not apply to fresh installs or users already on v2.0.0+).
 Go to Settings > Devices & Services, find the Matter Time Sync entry, delete it, and add it again.<br/>
 This is required to load the new configuration options properly.
 
 ## ✨ Features
 
-*   **🔍 Automatic Device Discovery**: Discovers all Matter devices from your Matter Server and identifies which support time synchronization
-*   **🔘 Button Entities**: Creates a sync button for each compatible device
-*   **⚡ Auto-Sync**: Optionally synchronize all devices at regular intervals (15 min to 24 hours)
-*   **🎯 Device Filtering**: Filter which devices get sync buttons by name
-*   **⚡ Native Async**: Built using Home Assistant's native `aiohttp` engine for high performance and stability
-*   **🛠️ Zero Dependencies**: Does not require the heavy `chip` SDK or external `websocket-client` libraries
-*   **⚙️ UI Configuration**: Configure everything directly via the Home Assistant interface
-*   **🌍 Complete Sync**: Synchronizes Time Zone (Standard Offset) and UTC Time (Microsecond precision)
+* **🔍 Automatic Device Discovery**: Discovers all Matter devices and identifies those supporting time synchronization.
+* **🔘 Button Entities**: Creates sync buttons for each device using your Home Assistant friendly names.
+* **⚡ Auto-Sync**: Optionally synchronize all devices at regular intervals (15 min to 24 hours).
+* **🎯 Device Filtering**: Filter which devices get sync buttons by name or specific criteria.
+* **⚡ Native Async**: Built on `aiohttp` and standard `Platform.BUTTON` enums for high performance and stability.
+* **🛠️ Zero Dependencies**: Does not require the heavy `chip` SDK or external `websocket-client` libraries.
+* **⚙️ UI & Multi-Instance**: Configure everything via the UI with full support for multiple integration instances.
+* **🌍 Complete Sync**: Synchronizes UTC and Time Zone with automatic Home Assistant timezone detection during setup.
+* **🧹 Smart Lifecycle**: Automatically cleans up resources for removed devices and prevents duplicate service registrations.
+* **🛡️ Robust Messaging**: Gracefully logs and skips unexpected Matter Server messages to prevent errors.
 
 ⚠️ You have to expose the TCP port 5580. To do this, go to `Settings` → `Add-ons` → `Matter Server` → `Configuration` → `Network` and add 5580 to expose the Matter Server WebSocket port.
 
@@ -243,6 +245,31 @@ logger:
 ---
 
 ## 📋 Version History
+
+### v2.1.2
+✨ New Features
+- Added automatic timezone detection from Home Assistant
+- Added friendly name support for buttons
+
+🐛 Bug Fixes
+- Fixed connection stability during concurrent auto-syncs
+- Fixed command retry and reconnection logic
+- Fixed internal locking issues during concurrent syncs
+- Fixed detection and validation for endpoint 0
+- Fixed device filtering for spaces and uppercase letters
+- Fixed service reliability after disconnections
+- Fixed node ID matching for similar IDs
+- Fixed Python compatibility for versions 3.9+
+- Fixed deprecated asyncio API usage
+- Fixed timeout handling during setup
+
+🛠️ Improvements
+- Added automatic resource cleanup for removed devices
+- Improved handling of unexpected server messages
+- Fixed duplicate service registration on reload
+- Added multi-instance support for service calls
+- Improved code efficiency and cleanliness
+- Improved compatibility with standard platform enums
 
 ### v2.0.3
 - Fixed autosync

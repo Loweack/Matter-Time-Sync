@@ -1,7 +1,6 @@
 """Config flow for Matter Time Sync integration."""
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any
 from zoneinfo import available_timezones
@@ -14,9 +13,6 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.selector import (
     BooleanSelector,
-    NumberSelector,
-    NumberSelectorConfig,
-    NumberSelectorMode,
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
@@ -49,41 +45,39 @@ _TIMEZONE_CACHE: list[str] | None = None
 
 
 def _get_sorted_timezones_sync() -> list[str]:
-    """
-    Return a sorted list of all available timezones (sync version).
-    
+    """Return a sorted list of all available timezones (sync version).
+
     This function does blocking I/O and should be run in an executor.
     """
     all_zones = sorted(available_timezones())
-    
+
     # Filter out "posix" and "right" variants (technical duplicates)
     filtered_zones = [
-        tz for tz in all_zones 
-        if not tz.startswith(('posix/', 'right/', 'Etc/'))
-        and '/' in tz  # Only regional timezones (Europe/Berlin, not CET)
+        tz
+        for tz in all_zones
+        if not tz.startswith(("posix/", "right/", "Etc/"))
+        and "/" in tz  # Only regional timezones (Europe/Berlin, not CET)
     ]
-    
+
     # Add UTC at the beginning
-    return ['UTC'] + filtered_zones
+    return ["UTC"] + filtered_zones
 
 
 async def async_get_sorted_timezones(hass: HomeAssistant) -> list[str]:
-    """
-    Return a sorted list of all available timezones (async version).
-    
+    """Return a sorted list of all available timezones (async version).
+
     Uses caching to avoid repeated filesystem access.
+    Uses hass.async_add_executor_job instead of deprecated asyncio.get_event_loop().
     """
     global _TIMEZONE_CACHE
-    
+
     if _TIMEZONE_CACHE is not None:
         return _TIMEZONE_CACHE
-    
-    # Run the blocking operation in an executor
-    loop = asyncio.get_event_loop()
-    _TIMEZONE_CACHE = await loop.run_in_executor(
-        None, _get_sorted_timezones_sync
+
+    _TIMEZONE_CACHE = await hass.async_add_executor_job(
+        _get_sorted_timezones_sync
     )
-    
+
     return _TIMEZONE_CACHE
 
 
@@ -106,11 +100,12 @@ def get_ha_timezone(hass: HomeAssistant) -> str:
 async def validate_ws_connection(ws_url: str) -> bool:
     """Test if a WebSocket connection to the Matter Server is possible."""
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.ws_connect(ws_url, timeout=5) as ws:
+        timeout = aiohttp.ClientTimeout(total=10, sock_connect=5)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.ws_connect(ws_url) as ws:
                 await ws.send_json({
                     "message_id": "test",
-                    "command": "get_nodes"
+                    "command": "get_nodes",
                 })
                 msg = await ws.receive(timeout=5)
                 return msg.type == aiohttp.WSMsgType.TEXT
@@ -155,7 +150,7 @@ class MatterTimeSyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # Auto-detect URL from Matter integration
         if self._discovered_url is None:
             self._discovered_url = get_matter_server_url(self.hass)
-        
+
         # Auto-detect timezone from HA config
         if self._discovered_timezone is None:
             self._discovered_timezone = get_ha_timezone(self.hass)
@@ -173,21 +168,32 @@ class MatterTimeSyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 await self.async_set_unique_id(DOMAIN)
                 self._abort_if_unique_id_configured()
 
+                # For device_filter, use empty string if not provided
+                device_filter = user_input.get(CONF_DEVICE_FILTER, "")
+
                 return self.async_create_entry(
                     title="Matter Time Sync",
                     data={
                         CONF_WS_URL: ws_url,
                         CONF_TIMEZONE: timezone,
-                        CONF_DEVICE_FILTER: user_input.get(CONF_DEVICE_FILTER, DEFAULT_DEVICE_FILTER),
-                        CONF_AUTO_SYNC_ENABLED: user_input.get(CONF_AUTO_SYNC_ENABLED, DEFAULT_AUTO_SYNC_ENABLED),
-                        CONF_AUTO_SYNC_INTERVAL: int(user_input.get(CONF_AUTO_SYNC_INTERVAL, DEFAULT_AUTO_SYNC_INTERVAL)),
-                        CONF_ONLY_TIME_SYNC_DEVICES: user_input.get(CONF_ONLY_TIME_SYNC_DEVICES, DEFAULT_ONLY_TIME_SYNC_DEVICES),
+                        CONF_DEVICE_FILTER: device_filter,
+                        CONF_AUTO_SYNC_ENABLED: user_input.get(
+                            CONF_AUTO_SYNC_ENABLED, DEFAULT_AUTO_SYNC_ENABLED
+                        ),
+                        CONF_AUTO_SYNC_INTERVAL: int(
+                            user_input.get(
+                                CONF_AUTO_SYNC_INTERVAL, DEFAULT_AUTO_SYNC_INTERVAL
+                            )
+                        ),
+                        CONF_ONLY_TIME_SYNC_DEVICES: user_input.get(
+                            CONF_ONLY_TIME_SYNC_DEVICES, DEFAULT_ONLY_TIME_SYNC_DEVICES
+                        ),
                     },
                 )
 
         # Get timezone options
         timezone_options = await async_get_sorted_timezones(self.hass)
-        
+
         # Build the form schema
         data_schema = vol.Schema(
             {
@@ -209,7 +215,7 @@ class MatterTimeSyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 ),
                 vol.Optional(
                     CONF_DEVICE_FILTER,
-                    default=DEFAULT_DEVICE_FILTER,
+                    description={"suggested_value": DEFAULT_DEVICE_FILTER},
                 ): TextSelector(
                     TextSelectorConfig(
                         type=TextSelectorType.TEXT,
@@ -277,21 +283,31 @@ class MatterTimeSyncOptionsFlow(config_entries.OptionsFlow):
 
         if user_input is not None:
             ws_url = user_input[CONF_WS_URL]
-            
+
             # Validate the new URL
             if not await validate_ws_connection(ws_url):
                 errors["base"] = "cannot_connect"
             else:
                 # Update the config entry with new data
+                # For device_filter, use empty string if not provided (allow clearing the filter)
+                device_filter = user_input.get(CONF_DEVICE_FILTER, "")
                 self.hass.config_entries.async_update_entry(
                     self.config_entry,
                     data={
                         CONF_WS_URL: ws_url,
                         CONF_TIMEZONE: user_input[CONF_TIMEZONE],
-                        CONF_DEVICE_FILTER: user_input.get(CONF_DEVICE_FILTER, DEFAULT_DEVICE_FILTER),
-                        CONF_AUTO_SYNC_ENABLED: user_input.get(CONF_AUTO_SYNC_ENABLED, DEFAULT_AUTO_SYNC_ENABLED),
-                        CONF_AUTO_SYNC_INTERVAL: int(user_input.get(CONF_AUTO_SYNC_INTERVAL, DEFAULT_AUTO_SYNC_INTERVAL)),
-                        CONF_ONLY_TIME_SYNC_DEVICES: user_input.get(CONF_ONLY_TIME_SYNC_DEVICES, DEFAULT_ONLY_TIME_SYNC_DEVICES),
+                        CONF_DEVICE_FILTER: device_filter,
+                        CONF_AUTO_SYNC_ENABLED: user_input.get(
+                            CONF_AUTO_SYNC_ENABLED, DEFAULT_AUTO_SYNC_ENABLED
+                        ),
+                        CONF_AUTO_SYNC_INTERVAL: int(
+                            user_input.get(
+                                CONF_AUTO_SYNC_INTERVAL, DEFAULT_AUTO_SYNC_INTERVAL
+                            )
+                        ),
+                        CONF_ONLY_TIME_SYNC_DEVICES: user_input.get(
+                            CONF_ONLY_TIME_SYNC_DEVICES, DEFAULT_ONLY_TIME_SYNC_DEVICES
+                        ),
                     },
                 )
                 return self.async_create_entry(title="", data={})
@@ -301,10 +317,20 @@ class MatterTimeSyncOptionsFlow(config_entries.OptionsFlow):
         current_timezone = self.config_entry.data.get(
             CONF_TIMEZONE, get_ha_timezone(self.hass)
         )
-        current_filter = self.config_entry.data.get(CONF_DEVICE_FILTER, DEFAULT_DEVICE_FILTER)
-        current_auto_sync = self.config_entry.data.get(CONF_AUTO_SYNC_ENABLED, DEFAULT_AUTO_SYNC_ENABLED)
-        current_interval = self.config_entry.data.get(CONF_AUTO_SYNC_INTERVAL, DEFAULT_AUTO_SYNC_INTERVAL)
-        current_only_time_sync = self.config_entry.data.get(CONF_ONLY_TIME_SYNC_DEVICES, DEFAULT_ONLY_TIME_SYNC_DEVICES)
+        # For device_filter, only use default if key doesn't exist at all (None)
+        # Empty string "" is a valid value (no filter)
+        current_filter = self.config_entry.data.get(CONF_DEVICE_FILTER)
+        if current_filter is None:
+            current_filter = DEFAULT_DEVICE_FILTER
+        current_auto_sync = self.config_entry.data.get(
+            CONF_AUTO_SYNC_ENABLED, DEFAULT_AUTO_SYNC_ENABLED
+        )
+        current_interval = self.config_entry.data.get(
+            CONF_AUTO_SYNC_INTERVAL, DEFAULT_AUTO_SYNC_INTERVAL
+        )
+        current_only_time_sync = self.config_entry.data.get(
+            CONF_ONLY_TIME_SYNC_DEVICES, DEFAULT_ONLY_TIME_SYNC_DEVICES
+        )
 
         # Get timezone options
         timezone_options = await async_get_sorted_timezones(self.hass)
@@ -329,7 +355,7 @@ class MatterTimeSyncOptionsFlow(config_entries.OptionsFlow):
                 ),
                 vol.Optional(
                     CONF_DEVICE_FILTER,
-                    default=current_filter,
+                    description={"suggested_value": current_filter},
                 ): TextSelector(
                     TextSelectorConfig(
                         type=TextSelectorType.TEXT,

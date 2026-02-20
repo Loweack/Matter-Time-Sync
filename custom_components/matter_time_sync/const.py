@@ -1,9 +1,11 @@
 """Constants for Matter Time Sync integration."""
 
+from homeassistant.const import Platform
+
 DOMAIN = "matter_time_sync"
 
 # Platforms
-PLATFORMS = ["button"]
+PLATFORMS: list[Platform] = [Platform.BUTTON]
 
 # Config keys
 CONF_WS_URL = "ws_url"
@@ -14,7 +16,7 @@ CONF_AUTO_SYNC_INTERVAL = "auto_sync_interval"
 CONF_ONLY_TIME_SYNC_DEVICES = "only_time_sync_devices"
 
 # Defaults
-DEFAULT_WS_URL = "ws://localhost:5580/ws"
+DEFAULT_WS_URL = "ws://core-matter-server:5580/ws"
 DEFAULT_TIMEZONE = "UTC"
 DEFAULT_DEVICE_FILTER = ""  # Empty = all devices
 DEFAULT_AUTO_SYNC_ENABLED = False
