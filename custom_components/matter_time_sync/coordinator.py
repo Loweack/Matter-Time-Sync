@@ -568,7 +568,7 @@ class MatterTimeSyncCoordinator:
                 "endpoint_id": endpoint_id,
                 "cluster_id": TIME_SYNC_CLUSTER_ID,
                 "command_name": "SetDSTOffset",
-                "payload": {"DSTOffset": dst_list},
+                "payload": {"dstOffset": dst_list},
             },
         )
 
@@ -584,7 +584,7 @@ class MatterTimeSyncCoordinator:
         # 3) Set UTC Time LAST
         # ---------------------------------------------------------
         payload_utc = {
-            "UTCTime": utc_microseconds,
+            "utcTime": utc_microseconds,
             "granularity": 4,
         }
 
