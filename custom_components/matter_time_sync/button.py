@@ -1,35 +1,76 @@
-"""Button platform for Matter Time Sync."""
+"""Button platform for Matter Time Sync.
+
+Attaches per-device Sync Time buttons to the existing Matter devices in HA
+(so it does NOT create extra devices).
+
+Supports a configurable filter target:
+- any: match filter against display name + node label + product name
+- display_name: match only the resolved display name (node['name'])
+- ha_name: match only if name_source == 'home_assistant'
+- matter: match only node label + product name
+"""
 from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 from typing import Any
 
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import slugify
 
-from .const import DOMAIN
+from .const import DOMAIN, DEFAULT_FILTER_TARGET
+from .coordinator import device_matches_filter, filter_candidates_for_node
 
 _LOGGER = logging.getLogger(__name__)
 
+# Regex to parse the standard Matter device identifier format:
+# "deviceid_<FABRIC_HEX>-<NODEID_HEX_16>-MatterNodeDevice"
+_MATTER_ID_RE = re.compile(
+    r"deviceid_[0-9A-Fa-f]+-([0-9A-Fa-f]{16})-MatterNodeDevice"
+)
 
-def device_matches_filter(device_name: str, filters: list[str]) -> bool:
-    """Check if a device name matches any of the filter terms.
 
-    Uses case-insensitive partial matching.
-    If filters is empty, all devices match.
-    Expects filters to already be stripped and lowercased.
+def _matter_device_identifiers_for_node(
+    hass: HomeAssistant, node_id: int
+) -> set[tuple[str, str]] | None:
+    """Find the existing Matter device identifiers for a node_id.
+
+    Matter devices are registered with identifiers like:
+      ("matter", "deviceid_<FABRIC_HEX>-<NODEID_HEX_16>-MatterNodeDevice")
+
+    Returns the identifier set if found, or None.
     """
-    if not filters:
-        return True
+    device_reg = dr.async_get(hass)
+    needle = f"-{node_id:016X}-MatterNodeDevice"
 
-    device_name_lower = device_name.lower()
-    return any(filter_term in device_name_lower for filter_term in filters)
+    for dev in device_reg.devices.values():
+        for domain, ident in dev.identifiers:
+            if domain != "matter":
+                continue
+            ident_str = str(ident)
+
+            # Fast path: check if the hex node_id is in the identifier
+            if needle in ident_str:
+                return {(domain, ident_str)}
+
+            # Regex fallback for unusual formats
+            m = _MATTER_ID_RE.search(ident_str)
+            if m:
+                try:
+                    parsed_node_id = int(m.group(1), 16)
+                except ValueError:
+                    continue
+                if parsed_node_id == node_id:
+                    return {(domain, ident_str)}
+
+    return None
 
 
 async def async_setup_entry(
@@ -42,6 +83,7 @@ async def async_setup_entry(
     coordinator = entry_data["coordinator"]
     device_filters = entry_data.get("device_filters", [])
     only_time_sync = entry_data.get("only_time_sync_devices", True)
+    filter_target = entry_data.get("filter_target", DEFAULT_FILTER_TARGET)
 
     # Store callback for later use (auto-discovery of new devices)
     entry_data["async_add_entities"] = async_add_entities
@@ -50,9 +92,10 @@ async def async_setup_entry(
     nodes = await coordinator.async_get_matter_nodes()
 
     _LOGGER.info(
-        "Matter Time Sync: Found %d nodes from Matter Server, filter: %s, only_time_sync: %s",
+        "Matter Time Sync: Found %d nodes, filter=%s, filter_target=%s, only_time_sync=%s",
         len(nodes),
         device_filters if device_filters else "[empty - all devices]",
+        filter_target,
         only_time_sync,
     )
 
@@ -71,6 +114,9 @@ async def async_setup_entry(
 
     for node in nodes:
         node_id = node.get("node_id")
+        if node_id is None:
+            continue
+
         node_name = node.get("name", f"Matter Node {node_id}")
         has_time_sync = node.get("has_time_sync", False)
 
@@ -78,18 +124,23 @@ async def async_setup_entry(
             skipped_no_timesync.append(f"{node_name} (node {node_id})")
             continue
 
-        if not device_matches_filter(node_name, device_filters):
+        candidates = filter_candidates_for_node(node, filter_target)
+        if not device_matches_filter(device_filters, candidates):
             skipped_filter.append(f"{node_name} (node {node_id})")
             continue
 
         known_node_ids.add(node_id)
 
+        # Try to attach to the existing Matter device in HA
+        matter_identifiers = _matter_device_identifiers_for_node(hass, node_id)
+
         entities.append(
             MatterTimeSyncButton(
                 coordinator=coordinator,
-                node_id=node["node_id"],
+                node_id=node_id,
                 node_name=node_name,
                 device_info=node.get("device_info"),
+                matter_identifiers=matter_identifiers,
             )
         )
 
@@ -145,10 +196,7 @@ async def async_check_new_devices(
     hass: HomeAssistant,
     entry_id: str,
 ) -> int:
-    """Check for new Matter devices and add buttons for them.
-
-    Returns the number of new devices added.
-    """
+    """Check for new Matter devices and add buttons for them."""
     entry_data = hass.data[DOMAIN].get(entry_id)
     if not entry_data:
         return 0
@@ -156,6 +204,7 @@ async def async_check_new_devices(
     coordinator = entry_data["coordinator"]
     device_filters = entry_data.get("device_filters", [])
     only_time_sync = entry_data.get("only_time_sync_devices", True)
+    filter_target = entry_data.get("filter_target", DEFAULT_FILTER_TARGET)
     known_node_ids: set[int] = entry_data.get("known_node_ids", set())
     async_add_entities = entry_data.get("async_add_entities")
 
@@ -164,13 +213,11 @@ async def async_check_new_devices(
         return 0
 
     nodes = await coordinator.async_get_matter_nodes()
-
     new_entities: list[MatterTimeSyncButton] = []
 
     for node in nodes:
         node_id = node.get("node_id")
-
-        if node_id in known_node_ids:
+        if node_id is None or node_id in known_node_ids:
             continue
 
         node_name = node.get("name", f"Matter Node {node_id}")
@@ -180,13 +227,15 @@ async def async_check_new_devices(
             _LOGGER.debug("New device %s skipped (no Time Sync support)", node_name)
             continue
 
-        if not device_matches_filter(node_name, device_filters):
+        candidates = filter_candidates_for_node(node, filter_target)
+        if not device_matches_filter(device_filters, candidates):
             _LOGGER.debug("New device %s skipped (doesn't match filter)", node_name)
             continue
 
         _LOGGER.info("Discovered new Matter device: %s (node %s)", node_name, node_id)
-
         known_node_ids.add(node_id)
+
+        matter_identifiers = _matter_device_identifiers_for_node(hass, node_id)
 
         new_entities.append(
             MatterTimeSyncButton(
@@ -194,6 +243,7 @@ async def async_check_new_devices(
                 node_id=node_id,
                 node_name=node_name,
                 device_info=node.get("device_info"),
+                matter_identifiers=matter_identifiers,
             )
         )
 
@@ -206,7 +256,6 @@ async def async_check_new_devices(
         )
 
     entry_data["known_node_ids"] = known_node_ids
-
     return len(new_entities)
 
 
@@ -224,6 +273,7 @@ class MatterTimeSyncButton(ButtonEntity):
         node_id: int,
         node_name: str,
         device_info: dict | None = None,
+        matter_identifiers: set[tuple[str, str]] | None = None,
     ) -> None:
         """Initialize the button."""
         self._coordinator = coordinator
@@ -240,7 +290,11 @@ class MatterTimeSyncButton(ButtonEntity):
         self._attr_name = f"{node_name} Sync Time"
         self.entity_id = f"button.{name_slug}_sync_time"
 
-        if device_info:
+        # Attach to the existing Matter device if found,
+        # otherwise create a standalone device entry as fallback.
+        if matter_identifiers:
+            self._attr_device_info = DeviceInfo(identifiers=matter_identifiers)
+        elif device_info:
             self._attr_device_info = DeviceInfo(
                 identifiers={(DOMAIN, str(node_id))},
                 name=node_name,
@@ -248,7 +302,6 @@ class MatterTimeSyncButton(ButtonEntity):
                 model=device_info.get("product_name", "Matter Device"),
             )
 
-    # Public properties so external code does not access private attrs
     @property
     def node_name(self) -> str:
         """Return the node name."""
@@ -293,7 +346,6 @@ class MatterTimeSyncButton(ButtonEntity):
             _LOGGER.info(
                 "Syncing time for Matter node %s (%s)", self._node_id, self._node_name
             )
-            # Pass None to trigger auto-detect
             success = await self._coordinator.async_sync_time(
                 self._node_id, endpoint=None
             )

@@ -16,8 +16,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 
 from .const import (
+    CONF_FILTER_TARGET,
     CONF_TIMEZONE,
     CONF_WS_URL,
+    DEFAULT_FILTER_TARGET,
     DEFAULT_TIMEZONE,
     DEFAULT_WS_URL,
     TIME_SYNC_CLUSTER_ID,
@@ -52,8 +54,6 @@ def _pascal_to_camel(key: str) -> str:
         return key
 
     # Find where the leading uppercase run ends.
-    # "DSTOffset" -> uppercase run is "DSTO", but we want "DST" + "Offset"
-    # "UTCTime"   -> uppercase run is "UTCT", but we want "UTC" + "Time"
     upper_run = 0
     for ch in key:
         if ch.isupper():
@@ -70,8 +70,6 @@ def _pascal_to_camel(key: str) -> str:
         return key.lower()
 
     # Acronym followed by PascalCase word: "DSTOffset" -> "dstOffset"
-    # The last uppercase char in the run is the start of the next word,
-    # so lowercase everything before it.
     return key[: upper_run - 1].lower() + key[upper_run - 1 :]
 
 
@@ -82,6 +80,59 @@ def _convert_keys_to_camel(payload: Any) -> Any:
     if isinstance(payload, list):
         return [_convert_keys_to_camel(item) for item in payload]
     return payload
+
+
+# ------------------------------------------------------------------
+# Filter helpers (shared with button.py)
+# ------------------------------------------------------------------
+
+
+def filter_candidates_for_node(
+    node: dict[str, Any], filter_target: str
+) -> list[str]:
+    """Return the list of strings to match the device filter against.
+
+    Supports filter_target values:
+    - any: match filter against display name + node label + product name
+    - display_name: match only the resolved display name (node['name'])
+    - ha_name: match only if name_source == 'home_assistant'
+    - matter: match only node label + product name
+    """
+    node_name = node.get("name") or ""
+    name_source = node.get("name_source") or ""
+    product_name = node.get("product_name") or ""
+    node_label = (node.get("device_info") or {}).get("node_label", "") or ""
+
+    if filter_target == "display_name":
+        return [node_name]
+
+    if filter_target == "ha_name":
+        return [node_name] if name_source == "home_assistant" else []
+
+    if filter_target == "matter":
+        candidates = [product_name, node_label]
+        if name_source in ("node_label", "product_name"):
+            candidates.append(node_name)
+        return candidates
+
+    # default: any
+    return [node_name, product_name, node_label]
+
+
+def device_matches_filter(
+    filters: list[str], candidates: list[str]
+) -> bool:
+    """Check if any candidate string matches any of the filter terms.
+
+    Uses case-insensitive partial matching.
+    If filters is empty, all devices match.
+    Expects filters to already be stripped and lowercased.
+    """
+    if not filters:
+        return True
+
+    haystacks = [c.lower() for c in candidates if c]
+    return any(term in h for term in filters for h in haystacks)
 
 
 class MatterTimeSyncCoordinator:
@@ -327,8 +378,6 @@ class MatterTimeSyncCoordinator:
                         return None
                     elif msg.type == WSMsgType.CLOSED:
                         _LOGGER.warning("WebSocket closed unexpectedly")
-                        # Mark disconnected but do NOT call _cleanup_connection
-                        # (we hold _command_lock — cleanup happens in caller)
                         self._connected = False
                         return None
                 return None
@@ -406,7 +455,6 @@ class MatterTimeSyncCoordinator:
         for nid in stale_ids:
             lock = self._per_node_sync_locks.get(nid)
             if lock and lock.locked():
-                # Still in use — leave it alone
                 continue
             self._per_node_sync_locks.pop(nid, None)
             _LOGGER.debug("Removed stale sync lock for node %s", nid)
@@ -416,7 +464,7 @@ class MatterTimeSyncCoordinator:
     def _get_time_sync_endpoints(self, attributes: dict[str, Any]) -> list[int]:
         """Return endpoint(s) that expose the Time Synchronization cluster (56)."""
         endpoints: set[int] = set()
-        for key in attributes.keys():
+        for key in attributes:
             parts = key.split("/")
             if len(parts) < 2:
                 continue
@@ -530,7 +578,6 @@ class MatterTimeSyncCoordinator:
         """
         lock = self._per_node_sync_locks.setdefault(node_id, asyncio.Lock())
 
-        # Use asyncio.wait_for instead of asyncio.timeout (Python 3.9+ compat)
         async def _acquire_and_sync() -> bool:
             async with lock:
                 return await self._do_sync_time(node_id, endpoint)
@@ -552,7 +599,6 @@ class MatterTimeSyncCoordinator:
         if not self._nodes_cache:
             await self.async_get_matter_nodes()
 
-        # Use None as the auto-detect sentinel instead of 0
         endpoint_id = endpoint
         if endpoint_id is None:
             node = next(
@@ -737,7 +783,6 @@ class MatterTimeSyncCoordinator:
             Dict with sync statistics:
             {"success": int, "failed": int, "skipped": int, "errors": list}
         """
-        # Prevent multiple auto-sync processes from running simultaneously
         if self._auto_sync_running:
             _LOGGER.warning("Auto-sync already running, skipping this trigger")
             return {"success": 0, "failed": 0, "skipped": 0, "errors": ["Already running"]}
@@ -750,7 +795,6 @@ class MatterTimeSyncCoordinator:
             _LOGGER.debug("Auto-sync started, flag set")
 
         try:
-            # Only reconnect when the connection is actually dead
             if not self.is_connected:
                 _LOGGER.debug("Connection lost, reconnecting for auto-sync")
                 if not await self.async_connect():
@@ -762,7 +806,6 @@ class MatterTimeSyncCoordinator:
                         "errors": ["Failed to connect"],
                     }
 
-            # Get nodes
             nodes = await self.async_get_matter_nodes()
             if not nodes:
                 _LOGGER.warning("No Matter nodes found")
@@ -773,20 +816,22 @@ class MatterTimeSyncCoordinator:
             stats: dict[str, Any] = {"success": 0, "failed": 0, "skipped": 0, "errors": []}
 
             async def _sync_all() -> None:
-                device_filters = self.entry.data.get("device_filter", "")
+                device_filters_raw = self.entry.data.get("device_filter", "")
                 device_filter_list = [
                     t.strip().lower()
-                    for t in device_filters.split(",")
+                    for t in device_filters_raw.split(",")
                     if t.strip()
                 ]
                 only_time_sync = self.entry.data.get("only_time_sync_devices", True)
+                filter_target = self.entry.data.get(
+                    CONF_FILTER_TARGET, DEFAULT_FILTER_TARGET
+                )
 
                 for node in nodes:
                     node_id = node.get("node_id")
                     node_name = node.get("name", f"Node {node_id}")
                     has_time_sync = node.get("has_time_sync", False)
 
-                    # Apply filters
                     if only_time_sync and not has_time_sync:
                         stats["skipped"] += 1
                         _LOGGER.debug(
@@ -796,9 +841,8 @@ class MatterTimeSyncCoordinator:
                         )
                         continue
 
-                    if device_filter_list and not any(
-                        term in node_name.lower() for term in device_filter_list
-                    ):
+                    candidates = filter_candidates_for_node(node, filter_target)
+                    if not device_matches_filter(device_filter_list, candidates):
                         stats["skipped"] += 1
                         _LOGGER.debug(
                             "Skipping node %s (%s) - filtered out",
@@ -807,7 +851,6 @@ class MatterTimeSyncCoordinator:
                         )
                         continue
 
-                    # Attempt sync
                     _LOGGER.info("Auto-syncing node %s (%s)", node_id, node_name)
                     try:
                         success = await self.async_sync_time(node_id)
@@ -841,7 +884,6 @@ class MatterTimeSyncCoordinator:
                 if stats["errors"]:
                     _LOGGER.warning("Auto-sync errors: %s", stats["errors"])
 
-            # Fixed timeout of 120s for entire auto-sync process
             await asyncio.wait_for(_sync_all(), timeout=120)
             return stats
 
@@ -857,9 +899,3 @@ class MatterTimeSyncCoordinator:
             async with self._auto_sync_lock:
                 self._auto_sync_running = False
                 _LOGGER.debug("Auto-sync finished, flag cleared")
-
-    def update_config(self, ws_url: str, timezone: str) -> None:
-        """Update configuration (called when options change)."""
-        self._ws_url = ws_url
-        self._timezone = timezone
-        _LOGGER.debug("Configuration updated: URL=%s, TZ=%s", ws_url, timezone)

@@ -18,8 +18,10 @@ from .const import (
     PLATFORMS,
     CONF_AUTO_SYNC_ENABLED,
     CONF_AUTO_SYNC_INTERVAL,
+    CONF_FILTER_TARGET,
     DEFAULT_AUTO_SYNC_ENABLED,
     DEFAULT_AUTO_SYNC_INTERVAL,
+    DEFAULT_FILTER_TARGET,
 )
 from .coordinator import MatterTimeSyncCoordinator
 
@@ -56,8 +58,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
 
     # 3. Store it in hass.data so button.py can access it
-    # Normalize device filters: strip whitespace and lowercase for consistent
-    # matching across button.py (entity creation) and coordinator.py (auto-sync).
     hass.data[DOMAIN][entry.entry_id] = {
         "coordinator": coordinator,
         "device_filters": [
@@ -66,6 +66,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             if t.strip()
         ],
         "only_time_sync_devices": entry.data.get("only_time_sync_devices", True),
+        "filter_target": entry.data.get(CONF_FILTER_TARGET, DEFAULT_FILTER_TARGET),
     }
 
     # 4. Forward entry setup to platforms (load button.py)
@@ -117,15 +118,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.info("Auto-sync disabled")
 
     # 6. Define Service Handlers
-    # Handlers look up coordinators dynamically from hass.data so they work
-    # correctly even if multiple config entries exist in the future.
-    # No is_connected guard — the coordinator's internal reconnect logic
-    # in _do_send_command handles reconnection automatically.
-
     async def handle_sync_time(call: ServiceCall) -> None:
         """Handle the sync_time service call."""
         node_id = call.data["node_id"]
-        endpoint = call.data.get("endpoint")  # None when not provided -> auto-detect
+        endpoint = call.data.get("endpoint")
 
         for eid, edata in hass.data[DOMAIN].items():
             coord = edata.get("coordinator")

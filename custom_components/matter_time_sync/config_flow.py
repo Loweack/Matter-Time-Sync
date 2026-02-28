@@ -26,16 +26,19 @@ from .const import (
     CONF_WS_URL,
     CONF_TIMEZONE,
     CONF_DEVICE_FILTER,
+    CONF_FILTER_TARGET,
     CONF_AUTO_SYNC_ENABLED,
     CONF_AUTO_SYNC_INTERVAL,
     CONF_ONLY_TIME_SYNC_DEVICES,
     DEFAULT_WS_URL,
     DEFAULT_TIMEZONE,
     DEFAULT_DEVICE_FILTER,
+    DEFAULT_FILTER_TARGET,
     DEFAULT_AUTO_SYNC_ENABLED,
     DEFAULT_AUTO_SYNC_INTERVAL,
     DEFAULT_ONLY_TIME_SYNC_DEVICES,
     AUTO_SYNC_INTERVALS,
+    FILTER_TARGET_OPTIONS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -131,10 +134,24 @@ def get_auto_sync_interval_options() -> list[dict]:
     ]
 
 
+def get_filter_target_options() -> list[dict]:
+    """Return filter target options with labels."""
+    labels = {
+        "any": "Any (name/label/product)",
+        "display_name": "Display name",
+        "ha_name": "HA name only",
+        "matter": "Matter product/label",
+    }
+    return [
+        {"value": opt, "label": labels.get(opt, opt)}
+        for opt in FILTER_TARGET_OPTIONS
+    ]
+
+
 class MatterTimeSyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Matter Time Sync."""
 
-    VERSION = 2  # Bumped version for new options
+    VERSION = 3  # Bumped version for filter_target option
 
     def __init__(self) -> None:
         """Initialize the config flow."""
@@ -177,6 +194,9 @@ class MatterTimeSyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         CONF_WS_URL: ws_url,
                         CONF_TIMEZONE: timezone,
                         CONF_DEVICE_FILTER: device_filter,
+                        CONF_FILTER_TARGET: user_input.get(
+                            CONF_FILTER_TARGET, DEFAULT_FILTER_TARGET
+                        ),
                         CONF_AUTO_SYNC_ENABLED: user_input.get(
                             CONF_AUTO_SYNC_ENABLED, DEFAULT_AUTO_SYNC_ENABLED
                         ),
@@ -220,6 +240,15 @@ class MatterTimeSyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     TextSelectorConfig(
                         type=TextSelectorType.TEXT,
                         multiline=False,
+                    )
+                ),
+                vol.Optional(
+                    CONF_FILTER_TARGET,
+                    default=DEFAULT_FILTER_TARGET,
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=get_filter_target_options(),
+                        mode=SelectSelectorMode.DROPDOWN,
                     )
                 ),
                 vol.Optional(
@@ -289,7 +318,6 @@ class MatterTimeSyncOptionsFlow(config_entries.OptionsFlow):
                 errors["base"] = "cannot_connect"
             else:
                 # Update the config entry with new data
-                # For device_filter, use empty string if not provided (allow clearing the filter)
                 device_filter = user_input.get(CONF_DEVICE_FILTER, "")
                 self.hass.config_entries.async_update_entry(
                     self.config_entry,
@@ -297,6 +325,9 @@ class MatterTimeSyncOptionsFlow(config_entries.OptionsFlow):
                         CONF_WS_URL: ws_url,
                         CONF_TIMEZONE: user_input[CONF_TIMEZONE],
                         CONF_DEVICE_FILTER: device_filter,
+                        CONF_FILTER_TARGET: user_input.get(
+                            CONF_FILTER_TARGET, DEFAULT_FILTER_TARGET
+                        ),
                         CONF_AUTO_SYNC_ENABLED: user_input.get(
                             CONF_AUTO_SYNC_ENABLED, DEFAULT_AUTO_SYNC_ENABLED
                         ),
@@ -317,11 +348,12 @@ class MatterTimeSyncOptionsFlow(config_entries.OptionsFlow):
         current_timezone = self.config_entry.data.get(
             CONF_TIMEZONE, get_ha_timezone(self.hass)
         )
-        # For device_filter, only use default if key doesn't exist at all (None)
-        # Empty string "" is a valid value (no filter)
         current_filter = self.config_entry.data.get(CONF_DEVICE_FILTER)
         if current_filter is None:
             current_filter = DEFAULT_DEVICE_FILTER
+        current_filter_target = self.config_entry.data.get(
+            CONF_FILTER_TARGET, DEFAULT_FILTER_TARGET
+        )
         current_auto_sync = self.config_entry.data.get(
             CONF_AUTO_SYNC_ENABLED, DEFAULT_AUTO_SYNC_ENABLED
         )
@@ -360,6 +392,15 @@ class MatterTimeSyncOptionsFlow(config_entries.OptionsFlow):
                     TextSelectorConfig(
                         type=TextSelectorType.TEXT,
                         multiline=False,
+                    )
+                ),
+                vol.Optional(
+                    CONF_FILTER_TARGET,
+                    default=current_filter_target,
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=get_filter_target_options(),
+                        mode=SelectSelectorMode.DROPDOWN,
                     )
                 ),
                 vol.Optional(
