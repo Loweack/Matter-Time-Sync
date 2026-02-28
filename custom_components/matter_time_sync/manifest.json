@@ -1,7 +1,7 @@
 {
   "domain": "matter_time_sync",
   "name": "Matter Time Sync",
-  "codeowners": ["@Loweack", "@Lexorius", "@svasek"],
+  "codeowners": ["@Loweack", "@Lexorius", "@svasek", "@cnc-lasercraft"],
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/Loweack/Matter-Time-Sync",
