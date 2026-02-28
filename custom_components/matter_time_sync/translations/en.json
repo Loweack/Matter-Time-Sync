@@ -8,6 +8,7 @@
           "ws_url": "Matter Server WebSocket URL",
           "timezone": "Timezone",
           "device_filter": "Device filter (comma-separated, empty = all)",
+          "filter_target": "Filter target",
           "auto_sync_enabled": "Enable automatic synchronization",
           "auto_sync_interval": "Synchronization interval",
           "only_time_sync_devices": "Only devices with Time Sync support"
@@ -16,6 +17,7 @@
           "ws_url": "WebSocket URL of the Matter Server (auto-detected if Matter integration is present)",
           "timezone": "Timezone for synchronization",
           "device_filter": "Only create buttons for devices whose name contains one of these terms (e.g. 'alpstuga, sonoff')",
+          "filter_target": "Which name field(s) to match the filter against: Any, Display name, HA name only, or Matter product/label",
           "auto_sync_enabled": "Automatically sync all filtered devices at the specified interval",
           "auto_sync_interval": "How often automatic synchronization runs",
           "only_time_sync_devices": "If enabled, only create buttons for devices that support the Time Sync cluster. Disable to try syncing all devices."
@@ -38,6 +40,7 @@
           "ws_url": "Matter Server WebSocket URL",
           "timezone": "Timezone",
           "device_filter": "Device filter (comma-separated, empty = all)",
+          "filter_target": "Filter target",
           "auto_sync_enabled": "Enable automatic synchronization",
           "auto_sync_interval": "Synchronization interval",
           "only_time_sync_devices": "Only devices with Time Sync support"
@@ -46,6 +49,7 @@
           "ws_url": "WebSocket URL of the Matter Server",
           "timezone": "Timezone for synchronization",
           "device_filter": "Only create buttons for devices with these names (e.g. 'alpstuga, sonoff')",
+          "filter_target": "Which name field(s) to match the filter against",
           "auto_sync_enabled": "Automatically sync all filtered devices",
           "auto_sync_interval": "How often automatic synchronization runs",
           "only_time_sync_devices": "If enabled, only create buttons for devices that support the Time Sync cluster. Disable to try syncing all devices."
