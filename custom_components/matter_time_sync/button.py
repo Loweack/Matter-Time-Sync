@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 import time
 from typing import Any
 
@@ -12,18 +11,11 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.util import slugify
 
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
-
-
-def slugify(text: str) -> str:
-    """Convert text to a slug suitable for entity IDs."""
-    text = text.lower()
-    text = re.sub(r"[^a-z0-9]+", "_", text)
-    text = text.strip("_")
-    return text[:50] if len(text) > 50 else text
 
 
 def device_matches_filter(device_name: str, filters: list[str]) -> bool:
