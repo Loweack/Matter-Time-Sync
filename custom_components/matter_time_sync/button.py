@@ -23,7 +23,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.util import slugify
 
 from .const import DOMAIN, DEFAULT_FILTER_TARGET
 from .coordinator import device_matches_filter, filter_candidates_for_node
@@ -262,8 +261,9 @@ async def async_check_new_devices(
 class MatterTimeSyncButton(ButtonEntity):
     """Button to sync time on a Matter device."""
 
-    _attr_icon = "mdi:clock-sync"
-    _attr_has_entity_name = False
+    _attr_icon = "mdi:update"
+    _attr_has_entity_name = True
+    _attr_translation_key = "sync_time"
 
     _PRESS_COOLDOWN_SECONDS = 2.0
 
@@ -284,11 +284,7 @@ class MatterTimeSyncButton(ButtonEntity):
         self._press_lock = asyncio.Lock()
         self._last_press_ts: float = 0.0
 
-        name_slug = slugify(node_name)
-
         self._attr_unique_id = f"matter_time_sync_{node_id}"
-        self._attr_name = f"{node_name} Sync Time"
-        self.entity_id = f"button.{name_slug}_sync_time"
 
         # Attach to the existing Matter device if found,
         # otherwise create a standalone device entry as fallback.
