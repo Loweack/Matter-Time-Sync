@@ -1,4 +1,11 @@
 {
+  "entity": {
+    "button": {
+      "sync_time": {
+        "name": "Synchronizovat čas"
+      }
+    }
+  },
   "config": {
     "step": {
       "user": {
@@ -17,7 +24,7 @@
           "ws_url": "WebSocket URL Matter Serveru (automaticky detekováno, pokud je přítomna Matter integrace)",
           "timezone": "Časové pásmo pro synchronizaci",
           "device_filter": "Vytvořit tlačítka pouze pro zařízení, jejichž název obsahuje některý z těchto výrazů (např. 'alpstuga, sonoff')",
-          "filter_target": "Která pole názvu porovnávat s filtrem: Všechna, Zobrazovaný název, Pouze název z HA nebo Matter produkt/label",
+          "filter_target": "Která pole názvu se mají porovnávat s filtrem: Jakékoli, Zobrazovaný název, Pouze název v HA, nebo Matter produkt/štítek",
           "auto_sync_enabled": "Automaticky synchronizovat všechna filtrovaná zařízení v zadaném intervalu",
           "auto_sync_interval": "Jak často se spouští automatická synchronizace",
           "only_time_sync_devices": "Pokud je povoleno, vytvoří tlačítka pouze pro zařízení podporující Time Sync cluster. Zakažte pro pokus o synchronizaci všech zařízení."
@@ -49,7 +56,7 @@
           "ws_url": "WebSocket URL Matter Serveru",
           "timezone": "Časové pásmo pro synchronizaci",
           "device_filter": "Vytvořit tlačítka pouze pro zařízení s těmito názvy (např. 'alpstuga, sonoff')",
-          "filter_target": "Která pole názvu porovnávat s filtrem",
+          "filter_target": "Která pole názvu se mají porovnávat s filtrem",
           "auto_sync_enabled": "Automaticky synchronizovat všechna filtrovaná zařízení",
           "auto_sync_interval": "Jak často se spouští automatická synchronizace",
           "only_time_sync_devices": "Pokud je povoleno, vytvoří tlačítka pouze pro zařízení podporující Time Sync cluster. Zakažte pro pokus o synchronizaci všech zařízení."

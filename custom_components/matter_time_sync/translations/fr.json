@@ -1,4 +1,11 @@
 {
+  "entity": {
+    "button": {
+      "sync_time": {
+        "name": "Synchroniser l'heure"
+      }
+    }
+  },
   "config": {
     "step": {
       "user": {
@@ -17,7 +24,7 @@
           "ws_url": "URL WebSocket du serveur Matter (détectée automatiquement si l'intégration Matter est présente)",
           "timezone": "Fuseau horaire pour la synchronisation",
           "device_filter": "Créer des boutons uniquement pour les appareils dont le nom contient l'un de ces termes (ex. 'alpstuga, sonoff')",
-          "filter_target": "Quel(s) champ(s) de nom utiliser pour le filtre : Tous, Nom affiché, Nom HA uniquement, ou Produit/label Matter",
+          "filter_target": "Quels champs de nom comparer avec le filtre : Tous, Nom affiché, Nom HA uniquement, ou Produit/étiquette Matter",
           "auto_sync_enabled": "Synchroniser automatiquement tous les appareils filtrés à l'intervalle spécifié",
           "auto_sync_interval": "Fréquence d'exécution de la synchronisation automatique",
           "only_time_sync_devices": "Si activé, créer des boutons uniquement pour les appareils prenant en charge le cluster Time Sync. Désactivez pour essayer de synchroniser tous les appareils."
@@ -49,7 +56,7 @@
           "ws_url": "URL WebSocket du serveur Matter",
           "timezone": "Fuseau horaire pour la synchronisation",
           "device_filter": "Créer des boutons uniquement pour les appareils ayant ces noms (ex. « alpstuga, sonoff »)",
-          "filter_target": "Quel(s) champ(s) de nom utiliser pour le filtre",
+          "filter_target": "Quels champs de nom comparer avec le filtre",
           "auto_sync_enabled": "Synchroniser automatiquement tous les appareils filtrés",
           "auto_sync_interval": "Fréquence d'exécution de la synchronisation automatique",
           "only_time_sync_devices": "Si activé, créer des boutons uniquement pour les appareils prenant en charge le cluster Time Sync. Désactivez pour essayer de synchroniser tous les appareils."

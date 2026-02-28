@@ -1,4 +1,11 @@
 {
+  "entity": {
+    "button": {
+      "sync_time": {
+        "name": "Sync Time"
+      }
+    }
+  },
   "config": {
     "step": {
       "user": {
