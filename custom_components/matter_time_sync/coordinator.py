@@ -35,6 +35,55 @@ def _to_chip_epoch_us(dt: datetime) -> int:
     return int((dt_utc - _CHIP_EPOCH).total_seconds() * 1_000_000)
 
 
+def _pascal_to_camel(key: str) -> str:
+    """Convert a PascalCase key to camelCase, with acronym-aware lowering.
+
+    Examples:
+        'TimeZone'      -> 'timeZone'
+        'ValidAt'       -> 'validAt'
+        'Granularity'   -> 'granularity'
+        'Offset'        -> 'offset'
+        'UTCTime'       -> 'utcTime'
+        'DSTOffset'     -> 'dstOffset'
+        'ValidStarting' -> 'validStarting'
+        'ValidUntil'    -> 'validUntil'
+    """
+    if not key or not key[0].isupper():
+        return key
+
+    # Find where the leading uppercase run ends.
+    # "DSTOffset" -> uppercase run is "DSTO", but we want "DST" + "Offset"
+    # "UTCTime"   -> uppercase run is "UTCT", but we want "UTC" + "Time"
+    upper_run = 0
+    for ch in key:
+        if ch.isupper():
+            upper_run += 1
+        else:
+            break
+
+    if upper_run <= 1:
+        # Simple PascalCase: "TimeZone" -> "timeZone"
+        return key[0].lower() + key[1:]
+
+    if upper_run == len(key):
+        # Entire key is uppercase: "DST" -> "dst"
+        return key.lower()
+
+    # Acronym followed by PascalCase word: "DSTOffset" -> "dstOffset"
+    # The last uppercase char in the run is the start of the next word,
+    # so lowercase everything before it.
+    return key[: upper_run - 1].lower() + key[upper_run - 1 :]
+
+
+def _convert_keys_to_camel(payload: Any) -> Any:
+    """Recursively convert all dict keys in a payload from PascalCase to camelCase."""
+    if isinstance(payload, dict):
+        return {_pascal_to_camel(k): _convert_keys_to_camel(v) for k, v in payload.items()}
+    if isinstance(payload, list):
+        return [_convert_keys_to_camel(item) for item in payload]
+    return payload
+
+
 class MatterTimeSyncCoordinator:
     """Coordinator to manage Matter Server WebSocket connection."""
 
@@ -163,6 +212,66 @@ class MatterTimeSyncCoordinator:
             await self._cleanup_connection()
 
         return result
+
+    async def _async_send_device_command(
+        self,
+        node_id: int,
+        endpoint_id: int,
+        cluster_id: int,
+        command_name: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Send a device_command with PascalCase payload, falling back to camelCase.
+
+        This method:
+        1. Sends the command with the PascalCase payload as provided.
+        2. If the server returns an error, converts keys to camelCase and retries.
+        3. Returns the successful response, or None if both attempts fail.
+        """
+        _LOGGER.debug(
+            "Sending %s to node %s with PascalCase payload: %s",
+            command_name,
+            node_id,
+            payload,
+        )
+
+        response = await self._async_send_command(
+            "device_command",
+            {
+                "node_id": node_id,
+                "endpoint_id": endpoint_id,
+                "cluster_id": cluster_id,
+                "command_name": command_name,
+                "payload": payload,
+            },
+        )
+
+        if response is not None:
+            return response
+
+        # Fallback: retry with camelCase keys
+        camel_payload = _convert_keys_to_camel(payload)
+        if camel_payload == payload:
+            # Keys are identical — no point retrying
+            return None
+
+        _LOGGER.info(
+            "PascalCase payload rejected for %s on node %s, retrying with camelCase: %s",
+            command_name,
+            node_id,
+            camel_payload,
+        )
+
+        return await self._async_send_command(
+            "device_command",
+            {
+                "node_id": node_id,
+                "endpoint_id": endpoint_id,
+                "cluster_id": cluster_id,
+                "command_name": command_name,
+                "payload": camel_payload,
+            },
+        )
 
     async def _do_send_command(
         self, command: str, args: dict[str, Any] | None = None
@@ -523,18 +632,17 @@ class MatterTimeSyncCoordinator:
 
         # ---------------------------------------------------------
         # 1) Set TimeZone FIRST
+        #    PascalCase primary: {"TimeZone": [{"Offset": ..., "ValidAt": ...}]}
+        #    camelCase fallback: {"timeZone": [{"offset": ..., "validAt": ...}]}
         # ---------------------------------------------------------
-        tz_list = [{"offset": utc_offset, "validAt": 0}]
+        tz_list = [{"Offset": utc_offset, "ValidAt": 0}]
 
-        tz_response = await self._async_send_command(
-            "device_command",
-            {
-                "node_id": node_id,
-                "endpoint_id": endpoint_id,
-                "cluster_id": TIME_SYNC_CLUSTER_ID,
-                "command_name": "SetTimeZone",
-                "payload": {"timeZone": tz_list},
-            },
+        tz_response = await self._async_send_device_command(
+            node_id=node_id,
+            endpoint_id=endpoint_id,
+            cluster_id=TIME_SYNC_CLUSTER_ID,
+            command_name="SetTimeZone",
+            payload={"TimeZone": tz_list},
         )
 
         if tz_response:
@@ -550,26 +658,25 @@ class MatterTimeSyncCoordinator:
 
         # ---------------------------------------------------------
         # 2) Set DST Offset SECOND
+        #    PascalCase primary: {"DSTOffset": [{"Offset": ..., "ValidStarting": ..., "ValidUntil": ...}]}
+        #    camelCase fallback: {"dstOffset": [{"offset": ..., "validStarting": ..., "validUntil": ...}]}
         # ---------------------------------------------------------
         far_future_us = _to_chip_epoch_us(utc_now + timedelta(days=365))
 
         dst_list = [
             {
-                "offset": dst_offset,
-                "validStarting": 0,
-                "validUntil": far_future_us,
+                "Offset": dst_offset,
+                "ValidStarting": 0,
+                "ValidUntil": far_future_us,
             }
         ]
 
-        dst_response = await self._async_send_command(
-            "device_command",
-            {
-                "node_id": node_id,
-                "endpoint_id": endpoint_id,
-                "cluster_id": TIME_SYNC_CLUSTER_ID,
-                "command_name": "SetDSTOffset",
-                "payload": {"DSTOffset": dst_list},
-            },
+        dst_response = await self._async_send_device_command(
+            node_id=node_id,
+            endpoint_id=endpoint_id,
+            cluster_id=TIME_SYNC_CLUSTER_ID,
+            command_name="SetDSTOffset",
+            payload={"DSTOffset": dst_list},
         )
 
         if dst_response:
@@ -582,10 +689,12 @@ class MatterTimeSyncCoordinator:
 
         # ---------------------------------------------------------
         # 3) Set UTC Time LAST
+        #    PascalCase primary: {"UTCTime": ..., "Granularity": ...}
+        #    camelCase fallback: {"utcTime": ..., "granularity": ...}
         # ---------------------------------------------------------
         payload_utc = {
             "UTCTime": utc_microseconds,
-            "granularity": 4,
+            "Granularity": 4,
         }
 
         _LOGGER.debug(
@@ -594,15 +703,12 @@ class MatterTimeSyncCoordinator:
             endpoint_id,
             payload_utc,
         )
-        time_response = await self._async_send_command(
-            "device_command",
-            {
-                "node_id": node_id,
-                "endpoint_id": endpoint_id,
-                "cluster_id": TIME_SYNC_CLUSTER_ID,
-                "command_name": "SetUTCTime",
-                "payload": payload_utc,
-            },
+        time_response = await self._async_send_device_command(
+            node_id=node_id,
+            endpoint_id=endpoint_id,
+            cluster_id=TIME_SYNC_CLUSTER_ID,
+            command_name="SetUTCTime",
+            payload=payload_utc,
         )
 
         if not time_response:
