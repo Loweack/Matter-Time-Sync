@@ -1,6 +1,6 @@
 # Matter Time Sync for Home Assistant
 
-![Version](https://img.shields.io/badge/version-2.2.0-blue)
+![Version](https://img.shields.io/badge/version-2.2.1-blue)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-Custom%20Component-orange)
 
 A native Home Assistant custom component to synchronize **Time** and **Timezone** on Matter devices that support the Time Synchronization cluster.
@@ -240,6 +240,24 @@ logger:
 ---
 
 ## 📋 Version History
+
+### v2.2.1
+✨ New Features
+- Added last_synced attribute to button entities (shows UTC timestamp of the last successful time sync)
+- Added last_sync_result attribute to button entities (shows success or failed after each sync)
+- Auto-sync now updates button entity attributes in real time (no need to press the button manually to see the latest sync status)
+- Attributes are visible in Developer Tools → States, entity "More info" panel, and usable in templates/automations
+
+🐛 Bug Fixes
+- Fixed session/socket resource leak when WebSocket reconnects (old aiohttp.ClientSession and WebSocket were not properly closed before creating new ones in async_connect)
+- Fixed unnecessary WebSocket round-trip on every sync (diagnostics async_get_time_sync_cluster_info call is now gated behind _LOGGER.isEnabledFor(logging.DEBUG) — only runs when debug logging is explicitly enabled)
+
+🛠️ Improvements
+- Reduced log noise: per-node detail logs moved from INFO to DEBUG level (summaries remain at INFO, full details available when debug logging is enabled)
+- Reduced log noise: skipped device lists moved from INFO to DEBUG level
+- Added entity_map in hass.data for efficient node-to-entity lookup during auto-sync
+- Added _update_entity_sync_status helper in coordinator for safe, exception-protected entity updates
+- Button entities now call async_write_ha_state() immediately after sync to update the HA UI in real time
 
 ### v2.2.0
 ✨ New Features
