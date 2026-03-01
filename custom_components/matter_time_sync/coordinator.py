@@ -129,10 +129,20 @@ class MatterTimeSyncCoordinator:
             if self.is_connected:
                 return True
 
-            # Reset state before connecting
+            # Close any leftover resources before reconnecting
             self._connected = False
-            self._ws = None
-            self._session = None
+            if self._ws:
+                try:
+                    await self._ws.close()
+                except Exception:  # noqa: BLE001
+                    pass
+                self._ws = None
+            if self._session:
+                try:
+                    await self._session.close()
+                except Exception:  # noqa: BLE001
+                    pass
+                self._session = None
 
             try:
                 self._session = aiohttp.ClientSession()
@@ -146,10 +156,16 @@ class MatterTimeSyncCoordinator:
                 _LOGGER.error("Failed to connect to Matter Server: %s", err)
                 self._connected = False
                 if self._ws:
-                    await self._ws.close()
+                    try:
+                        await self._ws.close()
+                    except Exception:  # noqa: BLE001
+                        pass
                     self._ws = None
                 if self._session:
-                    await self._session.close()
+                    try:
+                        await self._session.close()
+                    except Exception:  # noqa: BLE001
+                        pass
                     self._session = None
                 return False
 
@@ -409,7 +425,7 @@ class MatterTimeSyncCoordinator:
                 name = f"Matter Node {node_id}"
                 name_source = "fallback"
 
-            _LOGGER.info(
+            _LOGGER.debug(
                 "Node %s: name='%s' (source: %s), product='%s', has_time_sync=%s",
                 node_id,
                 name,
@@ -436,7 +452,11 @@ class MatterTimeSyncCoordinator:
     async def async_get_time_sync_cluster_info(
         self, node_id: int, endpoint_id: int
     ) -> dict[str, Any]:
-        """Get Time Sync cluster information for diagnostics."""
+        """Get Time Sync cluster information for diagnostics.
+
+        Only called when debug logging is enabled to avoid unnecessary
+        WebSocket round-trips during normal operation.
+        """
         response = await self._async_send_command("get_nodes")
         if not response:
             return {}
@@ -512,36 +532,38 @@ class MatterTimeSyncCoordinator:
                 node_id,
             )
 
-            # Log Time Sync cluster attributes for diagnostics (optional, with timeout)
-            try:
-                time_sync_attrs = await asyncio.wait_for(
-                    self.async_get_time_sync_cluster_info(node_id, endpoint_id),
-                    timeout=5,
-                )
-                if time_sync_attrs:
-                    _LOGGER.debug(
-                        "Node %s endpoint %s Time Sync cluster attributes: %s",
-                        node_id,
-                        endpoint_id,
-                        time_sync_attrs,
+            # Only fetch diagnostics when debug logging is active —
+            # avoids an extra get_nodes round-trip during normal operation
+            if _LOGGER.isEnabledFor(logging.DEBUG):
+                try:
+                    time_sync_attrs = await asyncio.wait_for(
+                        self.async_get_time_sync_cluster_info(node_id, endpoint_id),
+                        timeout=5,
                     )
-                else:
+                    if time_sync_attrs:
+                        _LOGGER.debug(
+                            "Node %s endpoint %s Time Sync cluster attributes: %s",
+                            node_id,
+                            endpoint_id,
+                            time_sync_attrs,
+                        )
+                    else:
+                        _LOGGER.debug(
+                            "Node %s endpoint %s: No Time Sync cluster attributes found",
+                            node_id,
+                            endpoint_id,
+                        )
+                except asyncio.TimeoutError:
                     _LOGGER.debug(
-                        "Node %s endpoint %s: No Time Sync cluster attributes found",
+                        "Timeout getting Time Sync attributes for node %s (non-critical)",
                         node_id,
-                        endpoint_id,
                     )
-            except asyncio.TimeoutError:
-                _LOGGER.debug(
-                    "Timeout getting Time Sync attributes for node %s (non-critical)",
-                    node_id,
-                )
-            except Exception as err:
-                _LOGGER.debug(
-                    "Could not get Time Sync attributes for node %s: %s (non-critical)",
-                    node_id,
-                    err,
-                )
+                except Exception as err:
+                    _LOGGER.debug(
+                        "Could not get Time Sync attributes for node %s: %s (non-critical)",
+                        node_id,
+                        err,
+                    )
 
         try:
             tz = ZoneInfo(self._timezone)

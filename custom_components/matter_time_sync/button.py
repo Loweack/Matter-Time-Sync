@@ -15,6 +15,7 @@ import asyncio
 import logging
 import re
 import time
+from datetime import datetime, timezone
 from typing import Any
 
 from homeassistant.components.button import ButtonEntity
@@ -99,7 +100,7 @@ async def async_setup_entry(
     )
 
     for node in nodes:
-        _LOGGER.info(
+        _LOGGER.debug(
             "  - Node %s: '%s' (product: %s)",
             node.get("node_id"),
             node.get("name", "?"),
@@ -174,14 +175,14 @@ async def async_setup_entry(
             )
 
     if skipped_no_timesync:
-        _LOGGER.info(
+        _LOGGER.debug(
             "Skipped %d devices (no Time Sync cluster): %s",
             len(skipped_no_timesync),
             skipped_no_timesync,
         )
 
     if skipped_filter:
-        _LOGGER.info(
+        _LOGGER.debug(
             "Skipped %d devices (filter): %s",
             len(skipped_filter),
             skipped_filter,
@@ -284,6 +285,10 @@ class MatterTimeSyncButton(ButtonEntity):
         self._press_lock = asyncio.Lock()
         self._last_press_ts: float = 0.0
 
+        # Sync status tracking
+        self._last_synced: str | None = None
+        self._last_sync_result: str | None = None
+
         self._attr_unique_id = f"matter_time_sync_{node_id}"
 
         # Attach to the existing Matter device if found,
@@ -315,6 +320,8 @@ class MatterTimeSyncButton(ButtonEntity):
             "node_id": self._node_id,
             "device_name": self._node_name,
             "integration": DOMAIN,
+            "last_synced": self._last_synced,
+            "last_sync_result": self._last_sync_result,
         }
 
     async def async_press(self) -> None:
@@ -346,12 +353,17 @@ class MatterTimeSyncButton(ButtonEntity):
                 self._node_id, endpoint=None
             )
             if success:
+                self._last_synced = datetime.now(timezone.utc).isoformat()
+                self._last_sync_result = "success"
+                self.async_write_ha_state()
                 _LOGGER.info(
                     "Time sync successful for %s (node %s)",
                     self._node_name,
                     self._node_id,
                 )
             else:
+                self._last_sync_result = "failed"
+                self.async_write_ha_state()
                 _LOGGER.error(
                     "Time sync failed for %s (node %s)",
                     self._node_name,
