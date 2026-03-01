@@ -16,10 +16,13 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 
 from .const import (
+    CONF_FILTER_TARGET,
     CONF_TIMEZONE,
     CONF_WS_URL,
+    DEFAULT_FILTER_TARGET,
     DEFAULT_TIMEZONE,
     DEFAULT_WS_URL,
+    DOMAIN,
     TIME_SYNC_CLUSTER_ID,
 )
 
@@ -33,6 +36,59 @@ def _to_chip_epoch_us(dt: datetime) -> int:
     """Convert a datetime to microseconds since CHIP epoch (2000-01-01)."""
     dt_utc = dt.astimezone(timezone.utc)
     return int((dt_utc - _CHIP_EPOCH).total_seconds() * 1_000_000)
+
+
+# ------------------------------------------------------------------
+# Filter helpers (shared with button.py)
+# ------------------------------------------------------------------
+
+
+def filter_candidates_for_node(
+    node: dict[str, Any], filter_target: str
+) -> list[str]:
+    """Return the list of strings to match the device filter against.
+
+    Supports filter_target values:
+    - any: match filter against display name + node label + product name
+    - display_name: match only the resolved display name (node['name'])
+    - ha_name: match only if name_source == 'home_assistant'
+    - matter: match only node label + product name
+    """
+    node_name = node.get("name") or ""
+    name_source = node.get("name_source") or ""
+    product_name = node.get("product_name") or ""
+    node_label = (node.get("device_info") or {}).get("node_label", "") or ""
+
+    if filter_target == "display_name":
+        return [node_name]
+
+    if filter_target == "ha_name":
+        return [node_name] if name_source == "home_assistant" else []
+
+    if filter_target == "matter":
+        candidates = [product_name, node_label]
+        if name_source in ("node_label", "product_name"):
+            candidates.append(node_name)
+        return candidates
+
+    # default: any
+    return [node_name, product_name, node_label]
+
+
+def device_matches_filter(
+    filters: list[str], candidates: list[str]
+) -> bool:
+    """Check if any candidate string matches any of the filter terms.
+
+    Uses case-insensitive partial matching.
+    If filters is empty, all devices match.
+    Expects filters to already be stripped and lowercased.
+    """
+    if not filters:
+        return True
+
+    haystacks = [c.lower() for c in candidates if c]
+    return any(term in h for term in filters for h in haystacks)
 
 
 class MatterTimeSyncCoordinator:
@@ -74,10 +130,20 @@ class MatterTimeSyncCoordinator:
             if self.is_connected:
                 return True
 
-            # Reset state before connecting
+            # Close any leftover resources before reconnecting
             self._connected = False
-            self._ws = None
-            self._session = None
+            if self._ws:
+                try:
+                    await self._ws.close()
+                except Exception:  # noqa: BLE001
+                    pass
+                self._ws = None
+            if self._session:
+                try:
+                    await self._session.close()
+                except Exception:  # noqa: BLE001
+                    pass
+                self._session = None
 
             try:
                 self._session = aiohttp.ClientSession()
@@ -91,10 +157,16 @@ class MatterTimeSyncCoordinator:
                 _LOGGER.error("Failed to connect to Matter Server: %s", err)
                 self._connected = False
                 if self._ws:
-                    await self._ws.close()
+                    try:
+                        await self._ws.close()
+                    except Exception:  # noqa: BLE001
+                        pass
                     self._ws = None
                 if self._session:
-                    await self._session.close()
+                    try:
+                        await self._session.close()
+                    except Exception:  # noqa: BLE001
+                        pass
                     self._session = None
                 return False
 
@@ -218,8 +290,6 @@ class MatterTimeSyncCoordinator:
                         return None
                     elif msg.type == WSMsgType.CLOSED:
                         _LOGGER.warning("WebSocket closed unexpectedly")
-                        # Mark disconnected but do NOT call _cleanup_connection
-                        # (we hold _command_lock — cleanup happens in caller)
                         self._connected = False
                         return None
                 return None
@@ -297,7 +367,6 @@ class MatterTimeSyncCoordinator:
         for nid in stale_ids:
             lock = self._per_node_sync_locks.get(nid)
             if lock and lock.locked():
-                # Still in use — leave it alone
                 continue
             self._per_node_sync_locks.pop(nid, None)
             _LOGGER.debug("Removed stale sync lock for node %s", nid)
@@ -307,7 +376,7 @@ class MatterTimeSyncCoordinator:
     def _get_time_sync_endpoints(self, attributes: dict[str, Any]) -> list[int]:
         """Return endpoint(s) that expose the Time Synchronization cluster (56)."""
         endpoints: set[int] = set()
-        for key in attributes.keys():
+        for key in attributes:
             parts = key.split("/")
             if len(parts) < 2:
                 continue
@@ -357,7 +426,7 @@ class MatterTimeSyncCoordinator:
                 name = f"Matter Node {node_id}"
                 name_source = "fallback"
 
-            _LOGGER.info(
+            _LOGGER.debug(
                 "Node %s: name='%s' (source: %s), product='%s', has_time_sync=%s",
                 node_id,
                 name,
@@ -384,7 +453,11 @@ class MatterTimeSyncCoordinator:
     async def async_get_time_sync_cluster_info(
         self, node_id: int, endpoint_id: int
     ) -> dict[str, Any]:
-        """Get Time Sync cluster information for diagnostics."""
+        """Get Time Sync cluster information for diagnostics.
+
+        Only called when debug logging is enabled to avoid unnecessary
+        WebSocket round-trips during normal operation.
+        """
         response = await self._async_send_command("get_nodes")
         if not response:
             return {}
@@ -411,6 +484,32 @@ class MatterTimeSyncCoordinator:
         return time_sync_attrs
 
     # ------------------------------------------------------------------
+    # Entity status update helper
+    # ------------------------------------------------------------------
+
+    def _update_entity_sync_status(self, node_id: int, success: bool) -> None:
+        """Update the button entity's sync status attributes after auto-sync.
+
+        Looks up the entity via the entity_map stored in hass.data.
+        Safe to call even if no entity exists for the node_id.
+        """
+        try:
+            domain_data = self.hass.data.get(DOMAIN, {})
+            for edata in domain_data.values():
+                if not isinstance(edata, dict):
+                    continue
+                entity = edata.get("entity_map", {}).get(node_id)
+                if entity is not None:
+                    entity.update_sync_status(success)
+                    return
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug(
+                "Could not update entity sync status for node %s: %s",
+                node_id,
+                err,
+            )
+
+    # ------------------------------------------------------------------
     # Time synchronisation
     # ------------------------------------------------------------------
 
@@ -421,7 +520,6 @@ class MatterTimeSyncCoordinator:
         """
         lock = self._per_node_sync_locks.setdefault(node_id, asyncio.Lock())
 
-        # Use asyncio.wait_for instead of asyncio.timeout (Python 3.9+ compat)
         async def _acquire_and_sync() -> bool:
             async with lock:
                 return await self._do_sync_time(node_id, endpoint)
@@ -443,7 +541,6 @@ class MatterTimeSyncCoordinator:
         if not self._nodes_cache:
             await self.async_get_matter_nodes()
 
-        # Use None as the auto-detect sentinel instead of 0
         endpoint_id = endpoint
         if endpoint_id is None:
             node = next(
@@ -462,36 +559,38 @@ class MatterTimeSyncCoordinator:
                 node_id,
             )
 
-            # Log Time Sync cluster attributes for diagnostics (optional, with timeout)
-            try:
-                time_sync_attrs = await asyncio.wait_for(
-                    self.async_get_time_sync_cluster_info(node_id, endpoint_id),
-                    timeout=5,
-                )
-                if time_sync_attrs:
-                    _LOGGER.debug(
-                        "Node %s endpoint %s Time Sync cluster attributes: %s",
-                        node_id,
-                        endpoint_id,
-                        time_sync_attrs,
+            # Only fetch diagnostics when debug logging is active —
+            # avoids an extra get_nodes round-trip during normal operation
+            if _LOGGER.isEnabledFor(logging.DEBUG):
+                try:
+                    time_sync_attrs = await asyncio.wait_for(
+                        self.async_get_time_sync_cluster_info(node_id, endpoint_id),
+                        timeout=5,
                     )
-                else:
+                    if time_sync_attrs:
+                        _LOGGER.debug(
+                            "Node %s endpoint %s Time Sync cluster attributes: %s",
+                            node_id,
+                            endpoint_id,
+                            time_sync_attrs,
+                        )
+                    else:
+                        _LOGGER.debug(
+                            "Node %s endpoint %s: No Time Sync cluster attributes found",
+                            node_id,
+                            endpoint_id,
+                        )
+                except asyncio.TimeoutError:
                     _LOGGER.debug(
-                        "Node %s endpoint %s: No Time Sync cluster attributes found",
+                        "Timeout getting Time Sync attributes for node %s (non-critical)",
                         node_id,
-                        endpoint_id,
                     )
-            except asyncio.TimeoutError:
-                _LOGGER.debug(
-                    "Timeout getting Time Sync attributes for node %s (non-critical)",
-                    node_id,
-                )
-            except Exception as err:
-                _LOGGER.debug(
-                    "Could not get Time Sync attributes for node %s: %s (non-critical)",
-                    node_id,
-                    err,
-                )
+                except Exception as err:
+                    _LOGGER.debug(
+                        "Could not get Time Sync attributes for node %s: %s (non-critical)",
+                        node_id,
+                        err,
+                    )
 
         try:
             tz = ZoneInfo(self._timezone)
@@ -523,6 +622,7 @@ class MatterTimeSyncCoordinator:
 
         # ---------------------------------------------------------
         # 1) Set TimeZone FIRST
+        #    camelCase keys: the Matter server expects this format
         # ---------------------------------------------------------
         tz_list = [{"offset": utc_offset, "validAt": 0}]
 
@@ -550,6 +650,8 @@ class MatterTimeSyncCoordinator:
 
         # ---------------------------------------------------------
         # 2) Set DST Offset SECOND
+        #    "DSTOffset" outer key stays PascalCase (server expects it)
+        #    Inner keys use camelCase
         # ---------------------------------------------------------
         far_future_us = _to_chip_epoch_us(utc_now + timedelta(days=365))
 
@@ -582,6 +684,8 @@ class MatterTimeSyncCoordinator:
 
         # ---------------------------------------------------------
         # 3) Set UTC Time LAST
+        #    "UTCTime" stays PascalCase (server expects it)
+        #    "granularity" uses camelCase
         # ---------------------------------------------------------
         payload_utc = {
             "UTCTime": utc_microseconds,
@@ -631,7 +735,6 @@ class MatterTimeSyncCoordinator:
             Dict with sync statistics:
             {"success": int, "failed": int, "skipped": int, "errors": list}
         """
-        # Prevent multiple auto-sync processes from running simultaneously
         if self._auto_sync_running:
             _LOGGER.warning("Auto-sync already running, skipping this trigger")
             return {"success": 0, "failed": 0, "skipped": 0, "errors": ["Already running"]}
@@ -644,7 +747,6 @@ class MatterTimeSyncCoordinator:
             _LOGGER.debug("Auto-sync started, flag set")
 
         try:
-            # Only reconnect when the connection is actually dead
             if not self.is_connected:
                 _LOGGER.debug("Connection lost, reconnecting for auto-sync")
                 if not await self.async_connect():
@@ -656,7 +758,6 @@ class MatterTimeSyncCoordinator:
                         "errors": ["Failed to connect"],
                     }
 
-            # Get nodes
             nodes = await self.async_get_matter_nodes()
             if not nodes:
                 _LOGGER.warning("No Matter nodes found")
@@ -667,20 +768,22 @@ class MatterTimeSyncCoordinator:
             stats: dict[str, Any] = {"success": 0, "failed": 0, "skipped": 0, "errors": []}
 
             async def _sync_all() -> None:
-                device_filters = self.entry.data.get("device_filter", "")
+                device_filters_raw = self.entry.data.get("device_filter", "")
                 device_filter_list = [
                     t.strip().lower()
-                    for t in device_filters.split(",")
+                    for t in device_filters_raw.split(",")
                     if t.strip()
                 ]
                 only_time_sync = self.entry.data.get("only_time_sync_devices", True)
+                filter_target = self.entry.data.get(
+                    CONF_FILTER_TARGET, DEFAULT_FILTER_TARGET
+                )
 
                 for node in nodes:
                     node_id = node.get("node_id")
                     node_name = node.get("name", f"Node {node_id}")
                     has_time_sync = node.get("has_time_sync", False)
 
-                    # Apply filters
                     if only_time_sync and not has_time_sync:
                         stats["skipped"] += 1
                         _LOGGER.debug(
@@ -690,9 +793,8 @@ class MatterTimeSyncCoordinator:
                         )
                         continue
 
-                    if device_filter_list and not any(
-                        term in node_name.lower() for term in device_filter_list
-                    ):
+                    candidates = filter_candidates_for_node(node, filter_target)
+                    if not device_matches_filter(device_filter_list, candidates):
                         stats["skipped"] += 1
                         _LOGGER.debug(
                             "Skipping node %s (%s) - filtered out",
@@ -701,7 +803,6 @@ class MatterTimeSyncCoordinator:
                         )
                         continue
 
-                    # Attempt sync
                     _LOGGER.info("Auto-syncing node %s (%s)", node_id, node_name)
                     try:
                         success = await self.async_sync_time(node_id)
@@ -713,6 +814,10 @@ class MatterTimeSyncCoordinator:
                             error_msg = f"Node {node_id} ({node_name}) sync returned False"
                             stats["errors"].append(error_msg)
                             _LOGGER.warning("✗ Node %s sync failed", node_id)
+
+                        # Update button entity attributes with sync result
+                        self._update_entity_sync_status(node_id, success)
+
                     except Exception as err:
                         stats["failed"] += 1
                         error_msg = f"Node {node_id} ({node_name}): {err}"
@@ -725,6 +830,9 @@ class MatterTimeSyncCoordinator:
                             exc_info=True,
                         )
 
+                        # Update button entity with failure status
+                        self._update_entity_sync_status(node_id, False)
+
                 _LOGGER.info(
                     "Auto-sync completed: %d successful, %d failed, %d skipped",
                     stats["success"],
@@ -735,7 +843,6 @@ class MatterTimeSyncCoordinator:
                 if stats["errors"]:
                     _LOGGER.warning("Auto-sync errors: %s", stats["errors"])
 
-            # Fixed timeout of 120s for entire auto-sync process
             await asyncio.wait_for(_sync_all(), timeout=120)
             return stats
 
@@ -751,9 +858,3 @@ class MatterTimeSyncCoordinator:
             async with self._auto_sync_lock:
                 self._auto_sync_running = False
                 _LOGGER.debug("Auto-sync finished, flag cleared")
-
-    def update_config(self, ws_url: str, timezone: str) -> None:
-        """Update configuration (called when options change)."""
-        self._ws_url = ws_url
-        self._timezone = timezone
-        _LOGGER.debug("Configuration updated: URL=%s, TZ=%s", ws_url, timezone)

@@ -11,6 +11,7 @@ PLATFORMS: list[Platform] = [Platform.BUTTON]
 CONF_WS_URL = "ws_url"
 CONF_TIMEZONE = "timezone"
 CONF_DEVICE_FILTER = "device_filter"
+CONF_FILTER_TARGET = "filter_target"
 CONF_AUTO_SYNC_ENABLED = "auto_sync_enabled"
 CONF_AUTO_SYNC_INTERVAL = "auto_sync_interval"
 CONF_ONLY_TIME_SYNC_DEVICES = "only_time_sync_devices"
@@ -19,12 +20,16 @@ CONF_ONLY_TIME_SYNC_DEVICES = "only_time_sync_devices"
 DEFAULT_WS_URL = "ws://core-matter-server:5580/ws"
 DEFAULT_TIMEZONE = "UTC"
 DEFAULT_DEVICE_FILTER = ""  # Empty = all devices
+DEFAULT_FILTER_TARGET = "any"  # any | display_name | ha_name | matter
 DEFAULT_AUTO_SYNC_ENABLED = False
 DEFAULT_AUTO_SYNC_INTERVAL = 60  # Minutes
 DEFAULT_ONLY_TIME_SYNC_DEVICES = True  # Only devices with Time Sync cluster
 
 # Auto-sync interval options (in minutes)
 AUTO_SYNC_INTERVALS = [15, 30, 60, 120, 360, 720, 1440]  # 15min to 24h
+
+# Filter target options
+FILTER_TARGET_OPTIONS = ["any", "display_name", "ha_name", "matter"]
 
 # Matter Cluster IDs
 TIME_SYNC_CLUSTER_ID = 0x0038  # Time Synchronization Cluster (56 decimal)
