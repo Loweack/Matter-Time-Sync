@@ -271,7 +271,7 @@ async def async_check_new_devices(
 class MatterTimeSyncButton(ButtonEntity):
     """Button to sync time on a Matter device."""
 
-    _attr_icon = "mdi:update"
+    _attr_icon = "mdi:clock-check-outline"
     _attr_has_entity_name = True
     _attr_translation_key = "sync_time"
 
