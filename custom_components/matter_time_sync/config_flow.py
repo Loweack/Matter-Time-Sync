@@ -134,18 +134,12 @@ def get_auto_sync_interval_options() -> list[dict]:
     ]
 
 
-def get_filter_target_options() -> list[dict]:
-    """Return filter target options with labels."""
-    labels = {
-        "any": "Any (name/label/product)",
-        "display_name": "Display name",
-        "ha_name": "HA name only",
-        "matter": "Matter product/label",
-    }
-    return [
-        {"value": opt, "label": labels.get(opt, opt)}
-        for opt in FILTER_TARGET_OPTIONS
-    ]
+def get_filter_target_options() -> list[str]:
+    """Return filter target option values.
+
+    Labels are resolved from translations via translation_key.
+    """
+    return list(FILTER_TARGET_OPTIONS)
 
 
 class MatterTimeSyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -249,6 +243,7 @@ class MatterTimeSyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     SelectSelectorConfig(
                         options=get_filter_target_options(),
                         mode=SelectSelectorMode.DROPDOWN,
+                        translation_key="filter_target",
                     )
                 ),
                 vol.Optional(
@@ -401,6 +396,7 @@ class MatterTimeSyncOptionsFlow(config_entries.OptionsFlow):
                     SelectSelectorConfig(
                         options=get_filter_target_options(),
                         mode=SelectSelectorMode.DROPDOWN,
+                        translation_key="filter_target",
                     )
                 ),
                 vol.Optional(
