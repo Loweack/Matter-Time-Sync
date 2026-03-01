@@ -191,6 +191,9 @@ async def async_setup_entry(
     # Store known node IDs for auto-discovery
     entry_data["known_node_ids"] = known_node_ids
 
+    # Store entity map for auto-sync status updates (node_id → entity)
+    entry_data["entity_map"] = {e.node_id: e for e in entities}
+
 
 async def async_check_new_devices(
     hass: HomeAssistant,
@@ -254,6 +257,12 @@ async def async_check_new_devices(
             len(new_entities),
             [e.node_name for e in new_entities],
         )
+
+        # Update entity map with new entities
+        entity_map = entry_data.get("entity_map", {})
+        for e in new_entities:
+            entity_map[e.node_id] = e
+        entry_data["entity_map"] = entity_map
 
     entry_data["known_node_ids"] = known_node_ids
     return len(new_entities)
@@ -323,6 +332,19 @@ class MatterTimeSyncButton(ButtonEntity):
             "last_synced": self._last_synced,
             "last_sync_result": self._last_sync_result,
         }
+
+    def update_sync_status(self, success: bool) -> None:
+        """Update sync status attributes.
+
+        Called by auto-sync to reflect results on the button entity
+        without going through async_press.
+        """
+        if success:
+            self._last_synced = datetime.now(timezone.utc).isoformat()
+            self._last_sync_result = "success"
+        else:
+            self._last_sync_result = "failed"
+        self.async_write_ha_state()
 
     async def async_press(self) -> None:
         """Handle the button press - sync time."""

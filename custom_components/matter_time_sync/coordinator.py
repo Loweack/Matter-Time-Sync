@@ -22,6 +22,7 @@ from .const import (
     DEFAULT_FILTER_TARGET,
     DEFAULT_TIMEZONE,
     DEFAULT_WS_URL,
+    DOMAIN,
     TIME_SYNC_CLUSTER_ID,
 )
 
@@ -483,6 +484,32 @@ class MatterTimeSyncCoordinator:
         return time_sync_attrs
 
     # ------------------------------------------------------------------
+    # Entity status update helper
+    # ------------------------------------------------------------------
+
+    def _update_entity_sync_status(self, node_id: int, success: bool) -> None:
+        """Update the button entity's sync status attributes after auto-sync.
+
+        Looks up the entity via the entity_map stored in hass.data.
+        Safe to call even if no entity exists for the node_id.
+        """
+        try:
+            domain_data = self.hass.data.get(DOMAIN, {})
+            for edata in domain_data.values():
+                if not isinstance(edata, dict):
+                    continue
+                entity = edata.get("entity_map", {}).get(node_id)
+                if entity is not None:
+                    entity.update_sync_status(success)
+                    return
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug(
+                "Could not update entity sync status for node %s: %s",
+                node_id,
+                err,
+            )
+
+    # ------------------------------------------------------------------
     # Time synchronisation
     # ------------------------------------------------------------------
 
@@ -787,6 +814,10 @@ class MatterTimeSyncCoordinator:
                             error_msg = f"Node {node_id} ({node_name}) sync returned False"
                             stats["errors"].append(error_msg)
                             _LOGGER.warning("✗ Node %s sync failed", node_id)
+
+                        # Update button entity attributes with sync result
+                        self._update_entity_sync_status(node_id, success)
+
                     except Exception as err:
                         stats["failed"] += 1
                         error_msg = f"Node {node_id} ({node_name}): {err}"
@@ -798,6 +829,9 @@ class MatterTimeSyncCoordinator:
                             err,
                             exc_info=True,
                         )
+
+                        # Update button entity with failure status
+                        self._update_entity_sync_status(node_id, False)
 
                 _LOGGER.info(
                     "Auto-sync completed: %d successful, %d failed, %d skipped",
