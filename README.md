@@ -8,7 +8,7 @@ A native Home Assistant custom component to synchronize **Time** and **Timezone*
 This component communicates directly with the Matter Server Add-on (or standalone container) via WebSocket, ensuring your devices always display the correct local time. I originally created this solution out of frustration with the **IKEA ALPSTUGA**'s inability to sync time (via Home Assistant), but it works across various Matter devices with automatic discovery and flexible scheduling options.
 
 > [!WARNING]
-> Breaking Change v2.2.0: due to the menu reorganization, you must remove the integration and then reinstall it via HACS.
+> Breaking Change v2.2.0+: due to the menu reorganization, you must remove the integration and then reinstall it via HACS.
 
 ## 🙏🏻 Acknowledgments
 🫰🏻 A big thank you to [@cnc-lasercraft](https://github.com/cnc-lasercraft), [@svasek](https://github.com/svasek), [@Lexorius](https://github.com/Lexorius) and [@miketth](https://github.com/miketth) for their help.
