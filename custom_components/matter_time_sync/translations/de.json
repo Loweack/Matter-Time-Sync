@@ -6,6 +6,16 @@
       }
     }
   },
+  "selector": {
+    "filter_target": {
+      "options": {
+        "any": "Alle (Name/Label/Produkt)",
+        "display_name": "Anzeigename",
+        "ha_name": "Nur HA-Name",
+        "matter": "Matter Produkt/Label"
+      }
+    }
+  },
   "config": {
     "step": {
       "user": {
@@ -24,7 +34,7 @@
           "ws_url": "WebSocket URL des Matter Servers (wird automatisch erkannt falls Matter-Integration vorhanden)",
           "timezone": "Zeitzone für die Synchronisation",
           "device_filter": "Nur Buttons für Geräte erstellen, deren Name einen dieser Begriffe enthält (z.B. 'alpstuga, sonoff')",
-          "filter_target": "Welche Namensfelder mit dem Filter abgeglichen werden: Alle, Anzeigename, Nur HA-Name, oder Matter Produkt/Label",
+          "filter_target": "Welche Namensfelder mit dem Filter abgeglichen werden",
           "auto_sync_enabled": "Automatisch alle gefilterten Geräte synchronisieren",
           "auto_sync_interval": "Wie oft die automatische Synchronisation ausgeführt wird",
           "only_time_sync_devices": "Wenn aktiviert, werden nur Buttons für Geräte erstellt, die den Time Sync Cluster unterstützen. Deaktivieren um alle Geräte zu synchronisieren."

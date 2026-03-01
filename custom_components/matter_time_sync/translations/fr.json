@@ -6,6 +6,16 @@
       }
     }
   },
+  "selector": {
+    "filter_target": {
+      "options": {
+        "any": "Tous (nom/label/produit)",
+        "display_name": "Nom affiché",
+        "ha_name": "Nom HA uniquement",
+        "matter": "Produit/label Matter"
+      }
+    }
+  },
   "config": {
     "step": {
       "user": {
@@ -24,7 +34,7 @@
           "ws_url": "URL WebSocket du serveur Matter (détectée automatiquement si l'intégration Matter est présente)",
           "timezone": "Fuseau horaire pour la synchronisation",
           "device_filter": "Créer des boutons uniquement pour les appareils dont le nom contient l'un de ces termes (ex. 'alpstuga, sonoff')",
-          "filter_target": "Quels champs de nom comparer avec le filtre : Tous, Nom affiché, Nom HA uniquement, ou Produit/étiquette Matter",
+          "filter_target": "Quels champs de nom comparer avec le filtre",
           "auto_sync_enabled": "Synchroniser automatiquement tous les appareils filtrés à l'intervalle spécifié",
           "auto_sync_interval": "Fréquence d'exécution de la synchronisation automatique",
           "only_time_sync_devices": "Si activé, créer des boutons uniquement pour les appareils prenant en charge le cluster Time Sync. Désactivez pour essayer de synchroniser tous les appareils."

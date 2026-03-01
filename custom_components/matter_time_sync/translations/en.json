@@ -6,6 +6,16 @@
       }
     }
   },
+  "selector": {
+    "filter_target": {
+      "options": {
+        "any": "Any (name/label/product)",
+        "display_name": "Display name",
+        "ha_name": "HA name only",
+        "matter": "Matter product/label"
+      }
+    }
+  },
   "config": {
     "step": {
       "user": {
@@ -24,7 +34,7 @@
           "ws_url": "WebSocket URL of the Matter Server (auto-detected if Matter integration is present)",
           "timezone": "Timezone for synchronization",
           "device_filter": "Only create buttons for devices whose name contains one of these terms (e.g. 'alpstuga, sonoff')",
-          "filter_target": "Which name field(s) to match the filter against: Any, Display name, HA name only, or Matter product/label",
+          "filter_target": "Which name field(s) to match the filter against",
           "auto_sync_enabled": "Automatically sync all filtered devices at the specified interval",
           "auto_sync_interval": "How often automatic synchronization runs",
           "only_time_sync_devices": "If enabled, only create buttons for devices that support the Time Sync cluster. Disable to try syncing all devices."
