@@ -1,6 +1,6 @@
 # Matter Time Sync for Home Assistant
 
-![Version](https://img.shields.io/badge/version-2.1.2-blue)
+![Version](https://img.shields.io/badge/version-2.2.1-blue)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-Custom%20Component-orange)
 
 A native Home Assistant custom component to synchronize **Time** and **Timezone** on Matter devices that support the Time Synchronization cluster.
@@ -8,15 +8,10 @@ A native Home Assistant custom component to synchronize **Time** and **Timezone*
 This component communicates directly with the Matter Server Add-on (or standalone container) via WebSocket, ensuring your devices always display the correct local time. I originally created this solution out of frustration with the **IKEA ALPSTUGA**'s inability to sync time (via Home Assistant), but it works across various Matter devices with automatic discovery and flexible scheduling options.
 
 > [!WARNING]
-> Currently, this custom component has been tested only with a Thread adapter (Matter Over Thread) directly attached to your Home Assistant RPi/Box/VM. Based on user feedback, it is not yet fully compatible with hubs such as the Amazon Echo (4th gen), Google Nest Hub (2nd gen), Google Nest Hub Max, or Apple HomePod mini. Since I don’t have any of these hubs, I’m unable to debug and fix the issues.
+> Breaking Change v2.2.0+: due to the menu reorganization, you must remove the integration and then reinstall it via HACS.
 
 ## 🙏🏻 Acknowledgments
-🫰🏻 A big thank you to [@svasek](https://github.com/svasek) for his help with v2.1+. Of course, let's not forget [@Lexorius](https://github.com/Lexorius) and [@miketth](https://github.com/miketth) for their help with v2.0.0.
-
-## ⚠️ WARNING
-### Breaking Change: Users upgrading from v1.0.4 must delete and re-add the integration (this does not apply to fresh installs or users already on v2.0.0+).
-Go to Settings > Devices & Services, find the Matter Time Sync entry, delete it, and add it again.<br/>
-This is required to load the new configuration options properly.
+🫰🏻 A big thank you to [@cnc-lasercraft](https://github.com/cnc-lasercraft), [@svasek](https://github.com/svasek), [@Lexorius](https://github.com/Lexorius) and [@miketth](https://github.com/miketth) for their help.
 
 ## ✨ Features
 
@@ -245,6 +240,37 @@ logger:
 ---
 
 ## 📋 Version History
+
+### v2.2.1
+✨ New Features
+- Added last_synced attribute to button entities (shows UTC timestamp of the last successful time sync)
+- Added last_sync_result attribute to button entities (shows success or failed after each sync)
+- Auto-sync now updates button entity attributes in real time (no need to press the button manually to see the latest sync status)
+- Attributes are visible in Developer Tools → States, entity "More info" panel, and usable in templates/automations
+
+🐛 Bug Fixes
+- Fixed session/socket resource leak when WebSocket reconnects (old aiohttp.ClientSession and WebSocket were not properly closed before creating new ones in async_connect)
+- Fixed unnecessary WebSocket round-trip on every sync (diagnostics async_get_time_sync_cluster_info call is now gated behind _LOGGER.isEnabledFor(logging.DEBUG) — only runs when debug logging is explicitly enabled)
+
+🛠️ Improvements
+- Reduced log noise: per-node detail logs moved from INFO to DEBUG level (summaries remain at INFO, full details available when debug logging is enabled)
+- Reduced log noise: skipped device lists moved from INFO to DEBUG level
+- Added entity_map in hass.data for efficient node-to-entity lookup during auto-sync
+- Added _update_entity_sync_status helper in coordinator for safe, exception-protected entity updates
+- Button entities now call async_write_ha_state() immediately after sync to update the HA UI in real time
+
+### v2.2.0
+✨ New Features
+- Buttons now attach to existing Matter devices (Sync Time buttons appear under your existing Matter devices instead of creating standalone devices)
+- Added “Filter target” option (match device filter against Any, Display name, HA name only, or Matter product/label)
+- Added translation support for the filter target option (English, French, German, Czech)
+
+🐛 Bug Fixes
+- Fixed orphaned entities when changing/removing device filters (button entities are properly removed on reload)
+
+🛠️ Improvements
+- Centralized and shared filter logic in coordinator.py (used by both button.py entity creation and auto-sync bulk process)
+- Improved Matter device lookup (uses standard deviceid_<FABRIC>-<NODEID>-MatterNodeDevice identifier, with hex matching and regex fallback)
 
 ### v2.1.2
 ✨ New Features
