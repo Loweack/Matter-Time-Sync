@@ -9,6 +9,8 @@ This component communicates directly with the Matter Server Add-on (or standalon
 
 > [!WARNING]
 > Breaking Change v2.2.0+: due to the menu reorganization, you must remove the integration and then reinstall it via HACS.
+>
+> For users who are using the latest beta version of the Matter Server (matter.js-based), please read the following: https://github.com/Loweack/Matter-Time-Sync/issues/46#issuecomment-3980419421
 
 ## 🙏🏻 Acknowledgments
 🫰🏻 A big thank you to [@cnc-lasercraft](https://github.com/cnc-lasercraft), [@svasek](https://github.com/svasek), [@Lexorius](https://github.com/Lexorius) and [@miketth](https://github.com/miketth) for their help.
