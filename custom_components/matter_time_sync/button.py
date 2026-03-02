@@ -51,7 +51,12 @@ def _matter_device_identifiers_for_node(
     needle = f"-{node_id:016X}-MatterNodeDevice"
 
     for dev in device_reg.devices.values():
-        for domain, ident in dev.identifiers:
+        for identifier in dev.identifiers:
+            if len(identifier) < 2:
+                _LOGGER.debug("Skipping malformed identifier: %s", identifier)
+                continue
+            domain = identifier[0]
+            ident = identifier[1]
             if domain != "matter":
                 continue
             ident_str = str(ident)
