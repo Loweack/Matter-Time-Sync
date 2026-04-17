@@ -22,6 +22,7 @@ from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -51,7 +52,12 @@ def _matter_device_identifiers_for_node(
     needle = f"-{node_id:016X}-MatterNodeDevice"
 
     for dev in device_reg.devices.values():
-        for domain, ident in dev.identifiers:
+        for identifier in dev.identifiers:
+            if len(identifier) < 2:
+                _LOGGER.debug("Skipping malformed identifier: %s", identifier)
+                continue
+            domain = identifier[0]
+            ident = identifier[1]
             if domain != "matter":
                 continue
             ident_str = str(ident)
@@ -273,6 +279,7 @@ class MatterTimeSyncButton(ButtonEntity):
 
     _attr_icon = "mdi:clock-check-outline"
     _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.CONFIG
     _attr_translation_key = "sync_time"
 
     _PRESS_COOLDOWN_SECONDS = 2.0
