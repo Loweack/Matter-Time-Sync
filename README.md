@@ -92,7 +92,6 @@ Each compatible Matter device gets a button entity named `[Device Name] Sync Tim
 
 Example entity IDs:
 - `button.alpstuga_air_quality_monitor_sync_time`
-- `button.vindstyrka_sync_time`
 
 ### Services
 
