@@ -194,7 +194,6 @@ action:
 The integration automatically detects which devices support the Time Synchronization cluster (0x0038). Devices that are known to support it include:
 
 - **IKEA ALPSTUGA** air quality monitor
-- **IKEA VINDSTYRKA** air quality sensor
 - Other Matter devices with Time Sync cluster support
 
 Devices without Time Sync support (like simple sensors, buttons, or plugs) will be skipped unless you disable the "Only devices with Time Sync support" option.
