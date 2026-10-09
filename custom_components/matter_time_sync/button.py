@@ -51,7 +51,12 @@ def _matter_device_identifiers_for_node(
     device_reg = dr.async_get(hass)
     needle = f"-{node_id:016X}-MatterNodeDevice"
 
-    for dev in device_reg.devices.values():
+    matter_devices = [
+        device
+        for entry in hass.config_entries.async_entries("matter")
+        for device in dr.async_entries_for_config_entry(device_reg, entry.entry_id)
+    ]
+    for dev in matter_devices:
         for identifier in dev.identifiers:
             if len(identifier) < 2:
                 _LOGGER.debug("Skipping malformed identifier: %s", identifier)

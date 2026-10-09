@@ -319,7 +319,14 @@ class MatterTimeSyncCoordinator:
         try:
             device_reg = dr.async_get(self.hass)
             node_id_str = str(node_id)
-            for device in device_reg.devices.values():
+            matter_devices = [
+                device
+                for entry in self.hass.config_entries.async_entries("matter")
+                for device in dr.async_entries_for_config_entry(
+                    device_reg, entry.entry_id
+                )
+            ]
+            for device in matter_devices:
                 for identifier in device.identifiers:
                     if len(identifier) < 2:
                         _LOGGER.debug("Skipping malformed identifier: %s", identifier)
