@@ -15,6 +15,7 @@ import asyncio
 import logging
 import re
 import time
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import Any
 
@@ -50,7 +51,13 @@ def _matter_device_identifiers_for_node(
     device_reg = dr.async_get(hass)
     needle = f"-{node_id:016X}-MatterNodeDevice"
 
-    for dev in device_reg.devices.values():
+    devices = device_reg.devices
+    # HA 2026.8+ exposes a read-only collection that iterates DeviceEntry
+    # values directly. Older cores expose the registry as a mapping.
+    if isinstance(devices, Mapping):
+        devices = devices.values()
+
+    for dev in devices:
         for identifier in dev.identifiers:
             if len(identifier) < 2:
                 _LOGGER.debug("Skipping malformed identifier: %s", identifier)

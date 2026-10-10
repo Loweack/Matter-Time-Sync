@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -319,7 +320,13 @@ class MatterTimeSyncCoordinator:
         try:
             device_reg = dr.async_get(self.hass)
             node_id_str = str(node_id)
-            for device in device_reg.devices.values():
+            devices = device_reg.devices
+            # Home Assistant 2026.8+ exposes a read-only collection that
+            # iterates DeviceEntry values directly. Older cores expose the
+            # registry as a mapping, where iteration yields keys.
+            if isinstance(devices, Mapping):
+                devices = devices.values()
+            for device in devices:
                 for identifier in device.identifiers:
                     if len(identifier) < 2:
                         _LOGGER.debug("Skipping malformed identifier: %s", identifier)
