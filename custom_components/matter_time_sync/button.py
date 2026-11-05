@@ -50,7 +50,7 @@ def _matter_device_identifiers_for_node(
     device_reg = dr.async_get(hass)
     needle = f"-{node_id:016X}-MatterNodeDevice"
 
-    for dev in device_reg.devices.values():
+    for dev in device_reg.devices:
         for identifier in dev.identifiers:
             if len(identifier) < 2:
                 _LOGGER.debug("Skipping malformed identifier: %s", identifier)
